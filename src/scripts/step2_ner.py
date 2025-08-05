@@ -16,6 +16,9 @@ def run_ner_on_file(chunk_filepath):
     ner_results = []
     prompt_template = load_prompt(os.path.join(config.BASE_DIR, "prompts", "ner_prompt.txt"))
 
+    # 获取文件名前缀（去掉.json扩展名）
+    file_prefix = os.path.basename(chunk_filepath).replace('.json', '')
+    
     # 2. 对每个chunk进行NER
     for chunk_id, chunk in tqdm.tqdm(chunks.items()):
         prompt = prompt_template.replace("{{ENTITY_TYPES}}", str(config.ENTITY_TYPES))
@@ -23,7 +26,8 @@ def run_ner_on_file(chunk_filepath):
         chunk_ner = call_llm(prompt, model_name="qwen-max")
         if chunk_ner and isinstance(chunk_ner, list):
             for entity in chunk_ner:
-                entity['chunk_id'] = [chunk_id]
+                # 为chunk_id添加文件名前缀，格式：文件名_chunk_id
+                entity['chunk_id'] = [f"{file_prefix}_{chunk_id}"]
                 ner_results.append(entity)
 
 

@@ -84,7 +84,7 @@ def process_llm_clusters(original_entities: list, clusters: list):
             "entity_text": canonical_name,
             "entity_type": canonical_entity_template["entity_type"],
             "entity_description": canonical_entity_template["entity_description"],
-            "chunk_id": sorted(list(merged_chunk_ids), key=lambda x: int(x)), # 合并并按数字大小排序chunk_id
+            "chunk_id": sorted(list(merged_chunk_ids)), # 合并并排序chunk_id
             "aliases": aliases 
         }
         final_entities.append(new_entity)
@@ -98,43 +98,66 @@ def process_llm_clusters(original_entities: list, clusters: list):
                 merged_chunk_ids.update(entity_obj["chunk_id"])
             
             # 使用第一个对象作为模板
-            template_obj = entity_objects[0]
-            template_obj["chunk_id"] = sorted(list(merged_chunk_ids), key=lambda x: int(x))
+            template_obj = entity_objects[0].copy()  # 创建副本避免修改原对象
+            template_obj["chunk_id"] = sorted(list(merged_chunk_ids))
             final_entities.append(template_obj)
 
     print(f"实体合并完成。原始实体数: {len(original_entities)}, 合并后实体数: {len(final_entities)}")
     return final_entities
 
 
-def run_disambiguate_on_file(input_filepath):
-    """对单个NER文件进行实体消歧"""
-    print(f"正在处理文件: {input_filepath}")
+def run_disambiguate_on_all_files():
+    """对整个目录下的所有NER文件进行实体消歧，合并为一个JSON文件"""
+    print("🔄 开始处理整个目录的实体消歧...")
     
-    entities = load_json(input_filepath)
-    if not entities:
-        print("实体数据为空，跳过。")
-        return
-
-    # 1. 调用LLM获取聚类“配方”
-    clusters_recipe = disambiguate_entities_with_llm(entities)
-    
-    # 2. 在Python中根据配方进行处理
-    final_disambiguated_entities = process_llm_clusters(entities, clusters_recipe)
-    
-    # 3. 保存结果
-    filename = os.path.basename(input_filepath)
-    output_filepath = os.path.join(config.NER_PRO_OUTPUT_DIR, filename)
-    save_json(final_disambiguated_entities, output_filepath)
-    print(f"处理完成！消歧后的实体列表已保存到: {output_filepath}\n")
-
-if __name__ == "__main__":
-    # 确保输出目录存在
-    os.makedirs(config.NER_PRO_OUTPUT_DIR, exist_ok=True)
+    # 收集所有文件的实体
+    all_entities = []
+    processed_files = []
     
     # 遍历所有NER输出文件
     for filename in os.listdir(config.NER_OUTPUT_DIR):
         if filename.endswith(".json"):
             input_path = os.path.join(config.NER_OUTPUT_DIR, filename)
-            run_disambiguate_on_file(input_path)
+            print(f"📄 正在加载文件: {filename}")
+            
+            entities = load_json(input_path)
+            if entities:
+                all_entities.extend(entities)
+                processed_files.append(filename)
+                print(f"✅ 从 {filename} 加载了 {len(entities)} 个实体")
+            else:
+                print(f"⚠️  文件 {filename} 实体数据为空，跳过")
     
-    print("\n所有NER文件的实体消歧处理完成！")
+    if not all_entities:
+        print("❌ 没有找到任何实体数据")
+        return
+    
+    print(f"📊 总共收集到 {len(all_entities)} 个实体，来自 {len(processed_files)} 个文件")
+    
+    # 1. 调用LLM获取聚类"配方"
+    print("🤖 正在调用LLM进行实体聚类...")
+    clusters_recipe = disambiguate_entities_with_llm(all_entities)
+    
+    # 2. 在Python中根据配方进行处理
+    print("🔧 正在根据聚类结果合并实体...")
+    final_disambiguated_entities = process_llm_clusters(all_entities, clusters_recipe)
+    
+    # 3. 保存合并后的结果到单个文件
+    output_filepath = os.path.join(config.NER_PRO_OUTPUT_DIR, "all_entities_disambiguated.json")
+    save_json(final_disambiguated_entities, output_filepath)
+    
+    print(f"✅ 处理完成！")
+    print(f"📈 统计信息:")
+    print(f"   📄 处理文件数: {len(processed_files)}")
+    print(f"   🏷️  原始实体数: {len(all_entities)}")
+    print(f"   🔗 消歧后实体数: {len(final_disambiguated_entities)}")
+    print(f"   💾 结果保存到: {output_filepath}")
+
+if __name__ == "__main__":
+    # 确保输出目录存在
+    os.makedirs(config.NER_PRO_OUTPUT_DIR, exist_ok=True)
+    
+    # 处理所有文件并合并结果
+    run_disambiguate_on_all_files()
+    
+    print("\n🎉 所有NER文件的实体消歧处理完成！")
