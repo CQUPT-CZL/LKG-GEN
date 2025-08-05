@@ -2,3 +2,4 @@
 src/scripts/__pycache__/
 .DS_Store
 src/scripts/lib/*
+src/data/*
