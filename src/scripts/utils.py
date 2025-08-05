@@ -9,7 +9,7 @@ client = OpenAI(
     base_url=config.OPENAI_API_BASE,
 )
 
-def call_llm(prompt: str, model_name="qwen-max"):
+def call_llm(prompt: str, model_name="qwen-plus-latest"):
     """封装大模型调用接口"""
     try:
         response = client.chat.completions.create(

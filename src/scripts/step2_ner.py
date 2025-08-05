@@ -1,29 +1,36 @@
 import os
 import config
-from utils import call_llm, save_json, load_text, load_prompt
+from utils import call_llm, save_json, load_prompt, load_json
+import tqdm
 
-def run_ner_on_file(input_filepath):
-    """对单个文件进行命名实体识别"""
-    print(f"正在处理文件: {input_filepath}")
+def run_ner_on_file(chunk_filepath):
+    """对单个分块文件进行命名实体识别"""
+    print(f"正在处理分块文件: {chunk_filepath}")
     
-    # 1. 加载预处理后的文本
-    text_content = load_text(input_filepath)
-    if not text_content:
-        print("文件内容为空，跳过。")
+    # 1. 加载分块数据
+    chunks = load_json(chunk_filepath)
+    if not chunks:
+        print("分块数据为空，跳过。")
         return
 
-    # 2. 加载并格式化Prompt
+    ner_results = []
     prompt_template = load_prompt(os.path.join(config.BASE_DIR, "prompts", "ner_prompt.txt"))
-    prompt = prompt_template.replace("{{ENTITY_TYPES}}", str(config.ENTITY_TYPES))
-    prompt = prompt.replace("{{TEXT_CONTENT}}", text_content)
 
-    # 3. 调用大模型进行NER
-    ner_results = call_llm(prompt)
+    # 2. 对每个chunk进行NER
+    for chunk_id, chunk in tqdm.tqdm(chunks.items()):
+        prompt = prompt_template.replace("{{ENTITY_TYPES}}", str(config.ENTITY_TYPES))
+        prompt = prompt.replace("{{TEXT_CONTENT}}", chunk)
+        chunk_ner = call_llm(prompt, model_name="qwen-max")
+        if chunk_ner and isinstance(chunk_ner, list):
+            for entity in chunk_ner:
+                entity['chunk_id'] = [chunk_id]
+                ner_results.append(entity)
 
-    # 4. 保存结果到文件
+
+    # 3. 保存所有chunks的NER结果
     if ner_results:
-        filename = os.path.basename(input_filepath)
-        output_filepath = os.path.join(config.NER_OUTPUT_DIR, filename.replace('.txt', '.json'))
+        filename = os.path.basename(chunk_filepath)
+        output_filepath = os.path.join(config.NER_OUTPUT_DIR, filename)
         save_json(ner_results, output_filepath)
         print(f"NER结果已保存到: {output_filepath}")
     else:
@@ -32,11 +39,11 @@ def run_ner_on_file(input_filepath):
 if __name__ == "__main__":
     # 确保输出目录存在
     os.makedirs(config.NER_OUTPUT_DIR, exist_ok=True)
+
+    # 遍历所有分块文件
+    for filename in os.listdir(config.CHUNK_OUTPUT_DIR):
+        if filename.endswith(".json"):
+            chunk_path = os.path.join(config.CHUNK_OUTPUT_DIR, filename)
+            run_ner_on_file(chunk_path)
     
-    # 遍历所有处理过的文本文件
-    for filename in os.listdir(config.PROCESSED_TEXT_DIR):
-        if filename.endswith(".md"):
-            input_path = os.path.join(config.PROCESSED_TEXT_DIR, filename)
-            run_ner_on_file(input_path)
-    
-    print("\n所有文件的命名实体识别处理完成！")
+    print("\n所有分块文件的命名实体识别处理完成！")
