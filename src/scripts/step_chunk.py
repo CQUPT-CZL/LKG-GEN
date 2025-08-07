@@ -13,7 +13,7 @@ def run_chunk_on_file(input_filepath):
         return
 
     # 2. 进行简单分块（例如，按段落分块）
-    chunks = text_content.split('\n\n')  # 假设按空行分块
+    chunks = text_content.split('\n') 
     chunks = {str(i): chunk.strip() for i, chunk in enumerate(chunks, 1) if chunk.strip()}
 
     # 3. 保存分块结果

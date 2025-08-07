@@ -3,3 +3,8 @@ src/scripts/__pycache__/
 .DS_Store
 src/scripts/lib/*
 src/data/*
+lib/bindings/utils.js
+lib/tom-select/tom-select.complete.min.js
+lib/tom-select/tom-select.css
+lib/vis-9.1.2/vis-network.css
+lib/vis-9.1.2/vis-network.min.js
