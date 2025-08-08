@@ -85,8 +85,22 @@ class DataManager:
             graph_id = graph["id"]
             entities = self.get_entities(graph_id)
             relations = self.get_relations(graph_id)
-            graph["entity_count"] = len(entities)
-            graph["relation_count"] = len(relations)
+            entity_count = len(entities)
+            relation_count = len(relations)
+            
+            # 安全更新计数，处理缺少字段的情况
+            current_entity_count = graph.get("entity_count", 0)
+            current_relation_count = graph.get("relation_count", 0)
+            
+            # 更新计数
+            graph["entity_count"] = entity_count
+            graph["relation_count"] = relation_count
+            
+            # 只有当计数发生变化时才保存文件
+            if current_entity_count != entity_count or current_relation_count != relation_count:
+                graph["updated_at"] = datetime.now().isoformat()
+                file_path = self.graphs_dir / f"{graph_id}.json"
+                self._save_json(graph, file_path)
         
         return sorted(graphs, key=lambda x: x["created_at"], reverse=True)
     
@@ -99,8 +113,21 @@ class DataManager:
             # 更新实体和关系计数
             entities = self.get_entities(graph_id)
             relations = self.get_relations(graph_id)
-            graph_data["entity_count"] = len(entities)
-            graph_data["relation_count"] = len(relations)
+            entity_count = len(entities)
+            relation_count = len(relations)
+            
+            # 安全更新计数，处理缺少字段的情况
+            current_entity_count = graph_data.get("entity_count", 0)
+            current_relation_count = graph_data.get("relation_count", 0)
+            
+            # 更新计数
+            graph_data["entity_count"] = entity_count
+            graph_data["relation_count"] = relation_count
+            
+            # 只有当计数发生变化时才保存文件
+            if current_entity_count != entity_count or current_relation_count != relation_count:
+                graph_data["updated_at"] = datetime.now().isoformat()
+                self._save_json(graph_data, file_path)
         
         return graph_data if graph_data else None
     
