@@ -25,7 +25,8 @@ import {
   NodeIndexOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
-  LoadingOutlined
+  LoadingOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import { apiService, TaskStatus } from '../services/api';
@@ -61,31 +62,105 @@ const GraphBuilder: React.FC = () => {
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [processSteps, setProcessSteps] = useState<ProcessStep[]>([
     {
-      title: '文档分块',
+      title: '📝 文档预处理',
+      description: '文档格式转换和预处理',
+      status: 'wait',
+      progress: 0
+    },
+    {
+      title: '🔪 文档分块',
       description: '将文档切分为语义块',
-      status: 'wait'
+      status: 'wait',
+      progress: 0
     },
     {
-      title: '命名实体识别',
+      title: '🏷️ 实体识别',
       description: '识别文档中的实体',
-      status: 'wait'
+      status: 'wait',
+      progress: 0
     },
     {
-      title: '实体消歧',
+      title: '🔍 实体消歧',
       description: '合并相似实体',
-      status: 'wait'
+      status: 'wait',
+      progress: 0
     },
     {
-      title: '关系抽取',
+      title: '🔗 关系抽取',
       description: '提取实体间关系',
-      status: 'wait'
+      status: 'wait',
+      progress: 0
     },
     {
-      title: '图谱构建',
-      description: '生成知识图谱',
-      status: 'wait'
+      title: '🕸️ 图谱构建',
+      description: '生成最终知识图谱',
+      status: 'wait',
+      progress: 0
     }
   ]);
+
+  // 根据进度消息更新步骤状态
+  const updateProcessSteps = (progress: number, message: string) => {
+    setProcessSteps(prevSteps => {
+      const newSteps = [...prevSteps];
+      
+      // 根据进度百分比和消息内容判断当前步骤
+      if (message.includes('文档预处理') || message.includes('开始文档预处理')) {
+        newSteps[0].status = 'process';
+        newSteps[0].progress = Math.min(progress, 15);
+      } else if (message.includes('文档预处理完成')) {
+        newSteps[0].status = 'finish';
+        newSteps[0].progress = 100;
+      }
+      
+      if (message.includes('文档分块') || message.includes('开始文档分块')) {
+        newSteps[0].status = 'finish';
+        newSteps[1].status = 'process';
+        newSteps[1].progress = Math.min((progress - 15) * 100 / 15, 100);
+      } else if (message.includes('文本分块完成')) {
+        newSteps[1].status = 'finish';
+        newSteps[1].progress = 100;
+      }
+      
+      if (message.includes('实体识别') || message.includes('开始实体识别')) {
+        newSteps[1].status = 'finish';
+        newSteps[2].status = 'process';
+        newSteps[2].progress = Math.min((progress - 30) * 100 / 15, 100);
+      } else if (message.includes('实体识别完成')) {
+        newSteps[2].status = 'finish';
+        newSteps[2].progress = 100;
+      }
+      
+      if (message.includes('实体消歧') || message.includes('开始实体消歧')) {
+        newSteps[2].status = 'finish';
+        newSteps[3].status = 'process';
+        newSteps[3].progress = Math.min((progress - 45) * 100 / 10, 100);
+      } else if (message.includes('实体消歧完成')) {
+        newSteps[3].status = 'finish';
+        newSteps[3].progress = 100;
+      }
+      
+      if (message.includes('关系抽取') || message.includes('开始关系抽取')) {
+        newSteps[3].status = 'finish';
+        newSteps[4].status = 'process';
+        newSteps[4].progress = Math.min((progress - 55) * 100 / 30, 100);
+      } else if (message.includes('关系抽取完成')) {
+        newSteps[4].status = 'finish';
+        newSteps[4].progress = 100;
+      }
+      
+      if (message.includes('构建知识图谱') || message.includes('开始构建知识图谱')) {
+        newSteps[4].status = 'finish';
+        newSteps[5].status = 'process';
+        newSteps[5].progress = Math.min((progress - 85) * 100 / 15, 100);
+      } else if (message.includes('知识图谱构建完成')) {
+        newSteps[5].status = 'finish';
+        newSteps[5].progress = 100;
+      }
+      
+      return newSteps;
+    });
+  };
 
   // 加载可用图谱列表
   useEffect(() => {
@@ -111,11 +186,21 @@ const GraphBuilder: React.FC = () => {
           const status = await apiService.getTaskStatus(taskId);
           setTaskStatus(status);
           
+          // 更新进度步骤
+          if (status.message) {
+            updateProcessSteps(status.progress || 0, status.message);
+          }
+          
           if (status.status === 'completed' || status.status === 'failed') {
             setIsProcessing(false);
             clearInterval(interval);
             
             if (status.status === 'completed') {
+              // 确保所有步骤都标记为完成
+              setProcessSteps(prevSteps => 
+                prevSteps.map(step => ({ ...step, status: 'finish', progress: 100 }))
+              );
+              
               message.success('知识图谱构建完成！');
               setCurrentStep(2);
               setBuildResult({
@@ -125,13 +210,19 @@ const GraphBuilder: React.FC = () => {
                 processingTime: status.result?.processingTime || '未知'
               });
             } else {
+              // 标记当前进行中的步骤为错误状态
+              setProcessSteps(prevSteps => 
+                prevSteps.map(step => 
+                  step.status === 'process' ? { ...step, status: 'error' } : step
+                )
+              );
               message.error('知识图谱构建失败');
             }
           }
         } catch (error) {
           console.error('获取任务状态失败:', error);
         }
-      }, 2000);
+      }, 1500); // 减少轮询间隔以获得更流畅的进度更新
     }
     
     return () => {
@@ -234,7 +325,46 @@ const GraphBuilder: React.FC = () => {
     setUploadedFiles([]);
     setIsProcessing(false);
     setBuildResult(null);
-    setProcessSteps(processSteps.map(step => ({ ...step, status: 'wait', progress: 0 })));
+    setTaskId(null);
+    setTaskStatus(null);
+    setProcessSteps([
+      {
+        title: '📝 文档预处理',
+        description: '文档格式转换和预处理',
+        status: 'wait',
+        progress: 0
+      },
+      {
+        title: '🔪 文档分块',
+        description: '将文档切分为语义块',
+        status: 'wait',
+        progress: 0
+      },
+      {
+        title: '🏷️ 实体识别',
+        description: '识别文档中的实体',
+        status: 'wait',
+        progress: 0
+      },
+      {
+        title: '🔍 实体消歧',
+        description: '合并相似实体',
+        status: 'wait',
+        progress: 0
+      },
+      {
+        title: '🔗 关系抽取',
+        description: '提取实体间关系',
+        status: 'wait',
+        progress: 0
+      },
+      {
+        title: '🕸️ 图谱构建',
+        description: '生成最终知识图谱',
+        status: 'wait',
+        progress: 0
+      }
+    ]);
   };
 
   const mainSteps = [
@@ -419,24 +549,43 @@ const GraphBuilder: React.FC = () => {
             )}
 
             <div style={{ marginBottom: 24 }}>
+              <Title level={5} style={{ marginBottom: 16 }}>📊 处理进度详情</Title>
               {processSteps.map((step, index) => (
-                <Card key={index} size="small" style={{ marginBottom: 16 }}>
+                <Card key={index} size="small" style={{ marginBottom: 12 }}>
                   <Row align="middle">
-                    <Col span={6}>
+                    <Col span={7}>
                       <Space>
-                        {step.status === 'finish' && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                        {step.status === 'process' && <LoadingOutlined />}
-                        <Text strong>{step.title}</Text>
+                        {step.status === 'finish' && <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />}
+                        {step.status === 'process' && <LoadingOutlined style={{ color: '#1890ff', fontSize: 16 }} />}
+                        {step.status === 'error' && <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />}
+                        {step.status === 'wait' && <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: '#d9d9d9', display: 'inline-block' }} />}
+                        <Text strong style={{ 
+                          color: step.status === 'finish' ? '#52c41a' : 
+                                 step.status === 'process' ? '#1890ff' : 
+                                 step.status === 'error' ? '#ff4d4f' : '#8c8c8c'
+                        }}>
+                          {step.title}
+                        </Text>
                       </Space>
                     </Col>
-                    <Col span={10}>
+                    <Col span={9}>
                       <Text type="secondary">{step.description}</Text>
                     </Col>
                     <Col span={8}>
                       <Progress
-                        percent={step.status === 'finish' ? 100 : step.status === 'process' ? 50 : 0}
+                        percent={step.progress || 0}
                         size="small"
-                        status={step.status === 'process' ? 'active' : undefined}
+                        status={
+                          step.status === 'process' ? 'active' : 
+                          step.status === 'error' ? 'exception' : 
+                          step.status === 'finish' ? 'success' : 'normal'
+                        }
+                        strokeColor={
+                          step.status === 'finish' ? '#52c41a' :
+                          step.status === 'process' ? '#1890ff' :
+                          step.status === 'error' ? '#ff4d4f' : '#d9d9d9'
+                        }
+                        showInfo={step.status !== 'wait'}
                       />
                     </Col>
                   </Row>
