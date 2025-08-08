@@ -1,0 +1,39 @@
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { Layout } from 'antd';
+import Sidebar from './components/Layout/Sidebar';
+import Header from './components/Layout/Header';
+import Dashboard from './pages/Dashboard';
+import GraphBuilder from './pages/GraphBuilder';
+import GraphManager from './pages/GraphManager';
+import GraphVisualization from './pages/GraphVisualization';
+import EntityManager from './pages/EntityManager';
+import RelationManager from './pages/RelationManager';
+import Settings from './pages/Settings';
+
+const { Content } = Layout;
+
+function App() {
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <Sidebar />
+      <Layout>
+        <Header />
+        <Content style={{ margin: '24px', background: '#fff', padding: '24px', borderRadius: '8px' }}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/builder" element={<GraphBuilder />} />
+            <Route path="/manager" element={<GraphManager />} />
+            <Route path="/visualization" element={<GraphVisualization />} />
+            <Route path="/entities" element={<EntityManager />} />
+            <Route path="/relations" element={<RelationManager />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </Content>
+      </Layout>
+    </Layout>
+  );
+}
+
+export default App;
