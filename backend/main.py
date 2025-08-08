@@ -10,6 +10,7 @@ import shutil
 from datetime import datetime
 import asyncio
 from pathlib import Path
+import psutil
 
 # 导入知识图谱构建模块
 from kg_builder import KnowledgeGraphBuilder
@@ -56,6 +57,13 @@ class ProcessingStatus(BaseModel):
     message: str
     result: Optional[Dict[str, Any]] = None
 
+class SystemPerformance(BaseModel):
+    cpu_usage: float
+    memory_usage: float
+    disk_usage: float
+    network_io: Dict[str, float]
+    timestamp: str
+
 # 全局任务状态存储
 task_status: Dict[str, ProcessingStatus] = {}
 
@@ -69,6 +77,40 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/system/performance")
+async def get_system_performance() -> SystemPerformance:
+    """获取实时系统性能数据"""
+    try:
+        # 获取CPU使用率
+        cpu_percent = psutil.cpu_percent(interval=1)
+        
+        # 获取内存使用率
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        
+        # 获取磁盘使用率
+        disk = psutil.disk_usage('/')
+        disk_percent = (disk.used / disk.total) * 100
+        
+        # 获取网络I/O
+        network = psutil.net_io_counters()
+        network_io = {
+            "bytes_sent": float(network.bytes_sent),
+            "bytes_recv": float(network.bytes_recv),
+            "packets_sent": float(network.packets_sent),
+            "packets_recv": float(network.packets_recv)
+        }
+        
+        return SystemPerformance(
+            cpu_usage=round(cpu_percent, 2),
+            memory_usage=round(memory_percent, 2),
+            disk_usage=round(disk_percent, 2),
+            network_io=network_io,
+            timestamp=datetime.now().isoformat()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取系统性能数据失败: {str(e)}")
 
 # 统计信息
 @app.get("/api/stats")

@@ -1,0 +1,13 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+openai>=1.98.0
+tqdm>=4.67.1
+networkx>=3.4.2
+pyvis>=0.3.2
+plotly>=6.2.0
+pydantic==2.5.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+aiofiles==23.2.1
+psutil>=5.9.0
