@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Steps,
@@ -13,7 +13,11 @@ import {
   Tag,
   message,
   Row,
-  Col
+  Col,
+  Form,
+  Input,
+  Select,
+  Radio
 } from 'antd';
 import {
   InboxOutlined,
@@ -24,9 +28,11 @@ import {
   LoadingOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
+import { apiService, TaskStatus } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Dragger } = Upload;
+const { Option } = Select;
 
 interface ProcessStep {
   title: string;
@@ -44,9 +50,15 @@ interface BuildResult {
 
 const GraphBuilder: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [form] = Form.useForm();
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
+  const [buildMode, setBuildMode] = useState<'standalone' | 'append'>('standalone');
+  const [availableGraphs, setAvailableGraphs] = useState<any[]>([]);
+  const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [processSteps, setProcessSteps] = useState<ProcessStep[]>([
     {
       title: '文档分块',
@@ -75,22 +87,66 @@ const GraphBuilder: React.FC = () => {
     }
   ]);
 
+  // 加载可用图谱列表
+  useEffect(() => {
+    const loadGraphs = async () => {
+      try {
+        const graphs = await apiService.getGraphs();
+        setAvailableGraphs(graphs);
+      } catch (error) {
+        console.error('加载图谱列表失败:', error);
+      }
+    };
+    
+    loadGraphs();
+  }, []);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isProcessing && taskId) {
+      // 定期检查任务状态
+      interval = setInterval(async () => {
+        try {
+          const status = await apiService.getTaskStatus(taskId);
+          setTaskStatus(status);
+          
+          if (status.status === 'completed' || status.status === 'failed') {
+            setIsProcessing(false);
+            clearInterval(interval);
+            
+            if (status.status === 'completed') {
+              message.success('知识图谱构建完成！');
+              setCurrentStep(2);
+              setBuildResult({
+                entities: status.result?.entities || 0,
+                relations: status.result?.relations || 0,
+                documents: uploadedFiles.length,
+                processingTime: status.result?.processingTime || '未知'
+              });
+            } else {
+              message.error('知识图谱构建失败');
+            }
+          }
+        } catch (error) {
+          console.error('获取任务状态失败:', error);
+        }
+      }, 2000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isProcessing, taskId, uploadedFiles.length]);
+
   const uploadProps: UploadProps = {
     name: 'file',
     multiple: true,
-    accept: '.pdf,.txt,.docx,.md',
+    // 移除accept限制，支持所有文件类型
+    // accept: '.pdf,.txt,.docx,.md',
     beforeUpload: (file) => {
-      const isValidType = [
-        'application/pdf',
-        'text/plain',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/markdown'
-      ].includes(file.type);
-      
-      if (!isValidType) {
-        message.error('只支持 PDF、TXT、DOCX、MD 格式的文件！');
-        return false;
-      }
+      // 移除文件类型检查，支持所有文件类型
+      console.log('上传文件:', file.type, file.name);
       
       const isLt50M = file.size / 1024 / 1024 < 50;
       if (!isLt50M) {
@@ -98,7 +154,7 @@ const GraphBuilder: React.FC = () => {
         return false;
       }
       
-      return false; // 阻止自动上传
+      return false; // 阻止自动上传，我们将在构建时手动上传
     },
     onChange: (info) => {
       setUploadedFiles(info.fileList);
@@ -114,34 +170,63 @@ const GraphBuilder: React.FC = () => {
       return;
     }
 
-    setIsProcessing(true);
-    setCurrentStep(1);
-
-    // 模拟处理过程
-    for (let i = 0; i < processSteps.length; i++) {
-      const newSteps = [...processSteps];
-      newSteps[i].status = 'process';
-      setProcessSteps(newSteps);
-
-      // 模拟处理时间
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      newSteps[i].status = 'finish';
-      newSteps[i].progress = 100;
-      setProcessSteps(newSteps);
+    // 验证附加模式下是否选择了目标图谱
+    if (buildMode === 'append' && !selectedGraphId) {
+      message.warning('附加模式下请选择目标图谱！');
+      return;
     }
 
-    // 设置结果
-    setBuildResult({
-      entities: 1248,
-      relations: 3567,
-      documents: uploadedFiles.length,
-      processingTime: '3分42秒'
-    });
+    try {
+      setIsProcessing(true);
+      setCurrentStep(1);
 
-    setIsProcessing(false);
-    setCurrentStep(2);
-    message.success('知识图谱构建完成！');
+      // 上传文档并开始构建
+      let lastTaskId = null;
+      for (const file of uploadedFiles) {
+        const formData = new FormData();
+        formData.append('file', file.originFileObj);
+        formData.append('build_mode', buildMode);
+        if (buildMode === 'append' && selectedGraphId) {
+          formData.append('target_graph_id', selectedGraphId);
+        }
+        
+        const result = await fetch('/api/documents/upload', {
+          method: 'POST',
+          body: formData,
+        }).then(res => res.json());
+        
+        lastTaskId = result.task_id;
+      }
+      
+      if (lastTaskId) {
+        setTaskId(lastTaskId);
+      }
+      
+      const modeText = buildMode === 'standalone' ? '独立构建' : '附加到现有图谱';
+      message.success(`开始构建知识图谱 (${modeText})`);
+    } catch (error: any) {
+      console.error('构建失败:', error);
+      console.error('错误详情:', error.response?.data || error.message);
+      console.error('错误类型:', error.name);
+      console.error('错误代码:', error.code);
+      
+      let errorMessage = '构建失败，请重试';
+      if (error.response?.data?.detail) {
+        errorMessage = `构建失败: ${error.response.data.detail}`;
+      } else if (error.message) {
+        if (error.message.includes('Network Error') || error.message.includes('网络错误')) {
+          errorMessage = '网络连接失败，请检查后端服务是否正常运行';
+        } else {
+          errorMessage = `构建失败: ${error.message}`;
+        }
+      } else if (error.code === 'NETWORK_ERROR') {
+        errorMessage = '网络连接失败，请检查后端服务是否正常运行';
+      }
+      
+      message.error(errorMessage);
+      setIsProcessing(false);
+      setCurrentStep(0);
+    }
   };
 
   const resetProcess = () => {
@@ -172,7 +257,7 @@ const GraphBuilder: React.FC = () => {
       <div className="page-header">
         <Title level={2} className="page-title">🏗️ 知识图谱构建</Title>
         <Paragraph className="page-description">
-          上传文档，自动提取实体和关系，构建知识图谱。支持 PDF、TXT、DOCX、MD 格式。
+          上传文档，自动提取实体和关系，构建知识图谱。支持所有文件格式。
         </Paragraph>
       </div>
 
@@ -188,7 +273,7 @@ const GraphBuilder: React.FC = () => {
               </p>
               <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
               <p className="ant-upload-hint">
-                支持单个或批量上传。支持 PDF、TXT、DOCX、MD 格式，单个文件不超过 50MB。
+                支持单个或批量上传。支持所有文件格式，单个文件不超过 50MB。
               </p>
             </Dragger>
 
@@ -209,8 +294,88 @@ const GraphBuilder: React.FC = () => {
                   )}
                 />
                 <Divider />
+                <Form form={form} layout="vertical" style={{ marginBottom: 16 }}>
+                  <Form.Item label="构建模式">
+                    <Radio.Group 
+                      value={buildMode} 
+                      onChange={(e) => {
+                        setBuildMode(e.target.value);
+                        if (e.target.value === 'standalone') {
+                          setSelectedGraphId(null);
+                        }
+                      }}
+                    >
+                      <Radio value="standalone">🆕 独立构建新图谱</Radio>
+                      <Radio value="append">📎 附加到现有图谱</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+                  
+                  {buildMode === 'append' && (
+                    <Form.Item 
+                      label="选择目标图谱"
+                      rules={[{ required: buildMode === 'append', message: '请选择目标图谱' }]}
+                    >
+                      <Select 
+                        value={selectedGraphId}
+                        onChange={setSelectedGraphId}
+                        placeholder="选择要附加到的图谱"
+                        allowClear
+                      >
+                        {availableGraphs.map(graph => (
+                          <Option key={graph.id} value={graph.id}>
+                            {graph.name} ({graph.entities_count || 0} 实体, {graph.relations_count || 0} 关系)
+                          </Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  )}
+                  
+                  {buildMode === 'standalone' && (
+                    <>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item
+                            name="graphName"
+                            label="图谱名称"
+                            rules={[{ required: true, message: '请输入图谱名称' }]}
+                          >
+                            <Input placeholder="请输入知识图谱名称" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="domain" label="领域">
+                            <Select placeholder="选择领域" allowClear>
+                              <Option value="general">通用</Option>
+                              <Option value="medical">钢铁</Option>
+                              <Option value="finance">冶金</Option>
+                              <Option value="education">教育</Option>
+                              <Option value="technology">科技</Option>
+                            </Select>
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item name="description" label="描述">
+                         <Input.TextArea rows={3} placeholder="请输入图谱描述（可选）" />
+                       </Form.Item>
+                     </>
+                   )}
+                </Form>
                 <Space>
-                  <Button type="primary" size="large" onClick={startProcessing}>
+                  <Button 
+                    type="primary" 
+                    size="large" 
+                    onClick={async () => {
+                      if (buildMode === 'standalone') {
+                        try {
+                          await form.validateFields(['graphName']);
+                        } catch (error) {
+                          message.warning('请填写必要的图谱信息！');
+                          return;
+                        }
+                      }
+                      startProcessing();
+                    }}
+                  >
                     🚀 开始构建知识图谱
                   </Button>
                   <Button onClick={resetProcess}>重置</Button>
@@ -231,6 +396,27 @@ const GraphBuilder: React.FC = () => {
               icon={<LoadingOutlined />}
               style={{ marginBottom: 24 }}
             />
+
+            {taskStatus && (
+              <div style={{ marginBottom: 24 }}>
+                <Progress
+                  percent={taskStatus.progress || 0}
+                  status={taskStatus.status === 'failed' ? 'exception' : 'active'}
+                  strokeColor={{
+                    '0%': '#108ee9',
+                    '100%': '#87d068',
+                  }}
+                />
+                <div style={{ marginTop: 16 }}>
+                  <Text>当前状态: {taskStatus.status}</Text>
+                  {taskStatus.message && (
+                    <div style={{ marginTop: 8 }}>
+                      <Text type="secondary">{taskStatus.message}</Text>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={{ marginBottom: 24 }}>
               {processSteps.map((step, index) => (

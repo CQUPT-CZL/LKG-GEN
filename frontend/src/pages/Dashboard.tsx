@@ -1,106 +1,108 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Progress, List, Typography, Button, Space } from 'antd';
-import { 
-  DatabaseOutlined, 
-  NodeIndexOutlined, 
-  BranchesOutlined,
-  FileTextOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined
-} from '@ant-design/icons';
+import { Card, Row, Col, Statistic, List, Button, Upload, message, Progress, Modal, Typography, Space, Tag } from 'antd';
+import { UploadOutlined, FileTextOutlined, NodeIndexOutlined, ShareAltOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import type { UploadProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { apiService, Graph, SystemStats, TaskStatus } from '../services/api';
 
 const { Title, Paragraph } = Typography;
 
-interface DashboardStats {
-  totalEntities: number;
-  totalRelations: number;
-  totalDocuments: number;
-  totalGraphs: number;
-  recentActivities: Array<{
-    id: string;
-    type: string;
-    description: string;
-    timestamp: string;
-  }>;
-}
-
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalEntities: 0,
-    totalRelations: 0,
-    totalDocuments: 0,
-    totalGraphs: 0,
-    recentActivities: []
-  });
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [showProgress, setShowProgress] = useState(false);
+  const [currentTask, setCurrentTask] = useState<string>('');
+  const [stats, setStats] = useState<SystemStats | null>(null);
+  const [recentGraphs, setRecentGraphs] = useState<Graph[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // 模拟数据加载
-    setTimeout(() => {
-      setStats({
-        totalEntities: 1248,
-        totalRelations: 3567,
-        totalDocuments: 89,
-        totalGraphs: 12,
-        recentActivities: [
-          {
-            id: '1',
-            type: 'build',
-            description: '完成文档 "AI技术报告.pdf" 的知识图谱构建',
-            timestamp: '2024-01-15 14:30'
-          },
-          {
-            id: '2',
-            type: 'entity',
-            description: '新增实体 "深度学习" 及其相关关系',
-            timestamp: '2024-01-15 13:45'
-          },
-          {
-            id: '3',
-            type: 'relation',
-            description: '优化了 "包含" 关系的权重计算',
-            timestamp: '2024-01-15 12:20'
-          },
-          {
-            id: '4',
-            type: 'visualization',
-            description: '导出了 "技术架构" 知识图谱可视化',
-            timestamp: '2024-01-15 11:15'
-          }
-        ]
-      });
+  // 加载统计数据
+  const loadStats = async () => {
+    try {
+      const statsData = await apiService.getStats();
+      setStats(statsData);
+      setRecentGraphs(statsData.recent_graphs || []);
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+      message.error('加载统计数据失败');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
   }, []);
 
-  const quickActions = [
-    {
-      title: '📄 构建知识图谱',
-      description: '上传文档，自动提取实体和关系',
-      action: () => navigate('/builder'),
-      color: '#1890ff'
-    },
-    {
-      title: '🔍 管理图谱',
-      description: '查看和编辑现有知识图谱',
-      action: () => navigate('/manager'),
-      color: '#52c41a'
-    },
-    {
-      title: '👁️ 可视化展示',
-      description: '交互式图谱可视化和探索',
-      action: () => navigate('/visualization'),
-      color: '#722ed1'
-    },
-    {
-      title: '⚙️ 系统设置',
-      description: '配置系统参数和模型设置',
-      action: () => navigate('/settings'),
-      color: '#fa8c16'
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    setShowProgress(true);
+    setUploadProgress(0);
+    setCurrentTask('正在上传文件...');
+
+    try {
+      // 上传文件
+      const uploadResult = await apiService.uploadDocument(file);
+      const taskId = uploadResult.task_id;
+      
+      message.success(`文件上传成功: ${uploadResult.filename}`);
+      setCurrentTask('正在处理文档...');
+      
+      // 轮询任务状态
+      const pollTaskStatus = async () => {
+        try {
+          const taskStatus: TaskStatus = await apiService.getTaskStatus(taskId);
+          
+          setUploadProgress(taskStatus.progress);
+          setCurrentTask(taskStatus.message);
+          
+          if (taskStatus.status === 'completed') {
+            message.success('知识图谱构建完成！');
+            setUploading(false);
+            setShowProgress(false);
+            // 重新加载统计数据
+            loadStats();
+          } else if (taskStatus.status === 'failed') {
+            message.error(`处理失败: ${taskStatus.message}`);
+            setUploading(false);
+            setShowProgress(false);
+          } else {
+            // 继续轮询
+            setTimeout(pollTaskStatus, 2000);
+          }
+        } catch (error) {
+          console.error('获取任务状态失败:', error);
+          message.error('获取任务状态失败');
+          setUploading(false);
+          setShowProgress(false);
+        }
+      };
+      
+      // 开始轮询
+      setTimeout(pollTaskStatus, 2000);
+      
+    } catch (error) {
+      console.error('文件上传失败:', error);
+      message.error('文件上传失败');
+      setUploading(false);
+      setShowProgress(false);
     }
-  ];
+  };
+
+  const uploadProps: UploadProps = {
+    name: 'file',
+    multiple: false,
+    // 移除accept限制，支持所有文件类型
+    // accept: '.pdf,.doc,.docx,.txt',
+    beforeUpload: (file) => {
+      handleUpload(file);
+      return false; // 阻止默认上传
+    },
+    showUploadList: false,
+  };
+
+
 
   return (
     <div>
@@ -116,81 +118,101 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="总实体数"
-              value={stats.totalEntities}
+              title="知识图谱总数"
+              value={stats?.total_graphs || 0}
               prefix={<NodeIndexOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-              suffix={<ArrowUpOutlined style={{ fontSize: '12px' }} />}
+              loading={loading}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="总关系数"
-              value={stats.totalRelations}
-              prefix={<BranchesOutlined />}
-              valueStyle={{ color: '#1890ff' }}
-              suffix={<ArrowUpOutlined style={{ fontSize: '12px' }} />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="处理文档"
-              value={stats.totalDocuments}
+              title="实体总数"
+              value={stats?.total_entities || 0}
               prefix={<FileTextOutlined />}
-              valueStyle={{ color: '#722ed1' }}
+              loading={loading}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="知识图谱"
-              value={stats.totalGraphs}
-              prefix={<DatabaseOutlined />}
-              valueStyle={{ color: '#fa8c16' }}
+              title="关系总数"
+              value={stats?.total_relations || 0}
+              prefix={<ShareAltOutlined />}
+              loading={loading}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title="系统状态"
+              value={stats?.system_health || '未知'}
+              prefix={<ClockCircleOutlined />}
+              loading={loading}
             />
           </Card>
         </Col>
       </Row>
 
       <Row gutter={[24, 24]}>
-        {/* 快速操作 */}
+        {/* 文档上传 */}
         <Col xs={24} lg={16}>
-          <Card title="🚀 快速操作" loading={loading}>
-            <Row gutter={[16, 16]}>
-              {quickActions.map((action, index) => (
-                <Col xs={24} sm={12} key={index}>
-                  <Card 
-                    hoverable
-                    className="feature-card"
-                    onClick={action.action}
-                    style={{ borderLeft: `4px solid ${action.color}` }}
-                  >
-                    <Card.Meta
-                      title={action.title}
-                      description={action.description}
-                    />
-                  </Card>
-                </Col>
-              ))}
-            </Row>
+          <Card title="📄 构建知识图谱">
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Upload {...uploadProps} disabled={uploading}>
+                <Button 
+                  icon={<UploadOutlined />} 
+                  size="large" 
+                  loading={uploading}
+                  disabled={uploading}
+                >
+                  {uploading ? '处理中...' : '上传文档'}
+                </Button>
+              </Upload>
+              <div style={{ marginTop: 16, color: '#666' }}>
+                支持所有格式文档
+              </div>
+            </div>
           </Card>
         </Col>
 
-        {/* 最近活动 */}
+        {/* 最近图谱 */}
         <Col xs={24} lg={8}>
-          <Card title="📋 最近活动" loading={loading}>
+          <Card title="📊 最近图谱" loading={loading}>
             <List
-              dataSource={stats.recentActivities}
+              loading={loading}
+              dataSource={recentGraphs}
               renderItem={(item) => (
-                <List.Item>
+                <List.Item
+                  actions={[
+                    <Button 
+                      type="link" 
+                      onClick={() => navigate(`/graph/${item.id}`)}
+                    >
+                      查看详情
+                    </Button>
+                  ]}
+                >
                   <List.Item.Meta
-                    title={item.description}
-                    description={item.timestamp}
+                    title={
+                      <Space>
+                        {item.name}
+                        <Tag color={item.status === 'active' ? 'green' : 'orange'}>
+                          {item.status === 'active' ? '活跃' : item.status}
+                        </Tag>
+                      </Space>
+                    }
+                    description={
+                      <div>
+                        <div>{item.description}</div>
+                        <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
+                          实体: {item.entity_count} | 关系: {item.relation_count} | 创建时间: {new Date(item.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    }
                   />
                 </List.Item>
               )}
@@ -199,33 +221,27 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 系统状态 */}
-      <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
-        <Col xs={24}>
-          <Card title="💻 系统状态">
-            <Row gutter={[24, 24]}>
-              <Col xs={24} sm={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <Progress type="circle" percent={85} format={() => 'CPU'} />
-                  <div style={{ marginTop: 8 }}>处理器使用率</div>
-                </div>
-              </Col>
-              <Col xs={24} sm={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <Progress type="circle" percent={62} format={() => 'MEM'} />
-                  <div style={{ marginTop: 8 }}>内存使用率</div>
-                </div>
-              </Col>
-              <Col xs={24} sm={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <Progress type="circle" percent={45} format={() => 'DISK'} />
-                  <div style={{ marginTop: 8 }}>磁盘使用率</div>
-                </div>
-              </Col>
-            </Row>
-          </Card>
-        </Col>
-      </Row>
+      {/* 进度弹窗 */}
+      <Modal
+        title="知识图谱构建进度"
+        open={showProgress}
+        footer={null}
+        closable={false}
+        centered
+      >
+        <div style={{ textAlign: 'center' }}>
+          <Progress 
+            type="circle" 
+            percent={Math.round(uploadProgress)} 
+            status={uploading ? 'active' : 'success'}
+          />
+          <div style={{ marginTop: 16, fontSize: '16px' }}>
+            {currentTask}
+          </div>
+        </div>
+      </Modal>
+
+
     </div>
   );
 };

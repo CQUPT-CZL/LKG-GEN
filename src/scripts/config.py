@@ -12,6 +12,7 @@ OPENAI_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1" # 或者�
 # 获取当前文件所在目录的绝对路径
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
+PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
 
 RAW_PAPERS_DIR = os.path.join(DATA_DIR, "raw_papers")
 PROCESSED_TEXT_DIR = os.path.join(DATA_DIR, "processed_text")
@@ -20,6 +21,11 @@ NER_PRO_OUTPUT_DIR = os.path.join(DATA_DIR, "ner_pro_output")
 NER_OUTPUT_DIR = os.path.join(DATA_DIR, "ner_output")
 RE_OUTPUT_DIR = os.path.join(DATA_DIR, "re_output")
 GRAPH_TRIPLES_DIR = os.path.join(DATA_DIR, "graph_triples")
+
+# --- Prompt Paths ---
+NER_PROMPT_PATH = os.path.join(PROMPTS_DIR, "ner_prompt.txt")
+RE_PROMPT_PATH = os.path.join(PROMPTS_DIR, "re_prompt.txt")
+DISAMBIGUATION_PROMPT_PATH = os.path.join(PROMPTS_DIR, "disambiguation_prompt.txt")
 
 # --- KG Schema Definition ---
 # 在这里定义你的实体和关系类型，方便在代码中引用

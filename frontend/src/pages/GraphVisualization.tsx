@@ -15,7 +15,8 @@ import {
   Row,
   Col,
   Divider,
-  message
+  message,
+  Spin
 } from 'antd';
 import {
   FullscreenOutlined,
@@ -29,6 +30,7 @@ import {
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
+import { apiService, Graph, VisualizationData } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -59,7 +61,7 @@ interface GraphStats {
 const GraphVisualization: React.FC = () => {
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
-  const [selectedGraph, setSelectedGraph] = useState<string>('1');
+  const [selectedGraph, setSelectedGraph] = useState<string>('');
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -68,6 +70,9 @@ const GraphVisualization: React.FC = () => {
   const [nodeSize, setNodeSize] = useState(25);
   const [edgeWidth, setEdgeWidth] = useState(2);
   const [showLabels, setShowLabels] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [visualizationData, setVisualizationData] = useState<VisualizationData | null>(null);
   const [graphStats, setGraphStats] = useState<GraphStats>({
     nodes: 0,
     edges: 0,
@@ -75,70 +80,64 @@ const GraphVisualization: React.FC = () => {
     edgeTypes: {}
   });
 
-  // 模拟图谱数据
-  const generateMockData = (): Data => {
-    const nodes: GraphNode[] = [
-      { id: '1', label: '人工智能', type: 'concept', color: '#1890ff' },
-      { id: '2', label: '机器学习', type: 'concept', color: '#1890ff' },
-      { id: '3', label: '深度学习', type: 'concept', color: '#1890ff' },
-      { id: '4', label: '神经网络', type: 'concept', color: '#1890ff' },
-      { id: '5', label: 'CNN', type: 'algorithm', color: '#52c41a' },
-      { id: '6', label: 'RNN', type: 'algorithm', color: '#52c41a' },
-      { id: '7', label: 'Transformer', type: 'algorithm', color: '#52c41a' },
-      { id: '8', label: 'BERT', type: 'model', color: '#fa8c16' },
-      { id: '9', label: 'GPT', type: 'model', color: '#fa8c16' },
-      { id: '10', label: '自然语言处理', type: 'field', color: '#722ed1' },
-      { id: '11', label: '计算机视觉', type: 'field', color: '#722ed1' },
-      { id: '12', label: '语音识别', type: 'field', color: '#722ed1' }
-    ];
+  // 加载图谱列表
+  const loadGraphs = async () => {
+    try {
+      const graphList = await apiService.getGraphs();
+      setGraphs(graphList);
+      if (graphList.length > 0 && !selectedGraph) {
+        setSelectedGraph(graphList[0].id);
+      }
+    } catch (error) {
+      console.error('加载图谱列表失败:', error);
+      message.error('加载图谱列表失败');
+    }
+  };
 
-    const edges: GraphEdge[] = [
-      { id: 'e1', from: '1', to: '2', label: '包含', type: 'contains' },
-      { id: 'e2', from: '2', to: '3', label: '包含', type: 'contains' },
-      { id: 'e3', from: '3', to: '4', label: '基于', type: 'based_on' },
-      { id: 'e4', from: '4', to: '5', label: '实现', type: 'implements' },
-      { id: 'e5', from: '4', to: '6', label: '实现', type: 'implements' },
-      { id: 'e6', from: '4', to: '7', label: '实现', type: 'implements' },
-      { id: 'e7', from: '7', to: '8', label: '应用于', type: 'applied_to' },
-      { id: 'e8', from: '7', to: '9', label: '应用于', type: 'applied_to' },
-      { id: 'e9', from: '8', to: '10', label: '用于', type: 'used_for' },
-      { id: 'e10', from: '9', to: '10', label: '用于', type: 'used_for' },
-      { id: 'e11', from: '5', to: '11', label: '用于', type: 'used_for' },
-      { id: 'e12', from: '6', to: '12', label: '用于', type: 'used_for' }
-    ];
-
-    return { nodes, edges };
+  // 加载图谱可视化数据
+  const loadVisualizationData = async (graphId: string) => {
+    if (!graphId) return;
+    
+    setLoading(true);
+    try {
+      const data = await apiService.getGraphVisualization(graphId);
+      setVisualizationData(data);
+      
+      // 计算统计信息
+      const nodeTypes: Record<string, number> = {};
+      const edgeTypes: Record<string, number> = {};
+      
+      data.nodes.forEach((node) => {
+        nodeTypes[node.type] = (nodeTypes[node.type] || 0) + 1;
+      });
+      
+      data.edges.forEach((edge) => {
+        const edgeType = edge.label || 'unknown';
+        edgeTypes[edgeType] = (edgeTypes[edgeType] || 0) + 1;
+      });
+      
+      setGraphStats({
+        nodes: data.nodes.length,
+        edges: data.edges.length,
+        nodeTypes,
+        edgeTypes
+      });
+      
+    } catch (error) {
+      console.error('加载图谱数据失败:', error);
+      message.error('加载图谱数据失败');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const initializeNetwork = () => {
-    if (!networkRef.current) return;
+    if (!networkRef.current || !visualizationData) return;
 
-    const data = generateMockData();
-    
-    // 计算统计信息
-    const nodeTypes: Record<string, number> = {};
-    const edgeTypes: Record<string, number> = {};
-    
-    if (data.nodes) {
-      const nodes = Array.isArray(data.nodes) ? data.nodes : data.nodes.get();
-      nodes.forEach((node: any) => {
-        nodeTypes[node.type] = (nodeTypes[node.type] || 0) + 1;
-      });
-    }
-    
-    if (data.edges) {
-      const edges = Array.isArray(data.edges) ? data.edges : data.edges.get();
-      edges.forEach((edge: any) => {
-        edgeTypes[edge.type] = (edgeTypes[edge.type] || 0) + 1;
-      });
-    }
-    
-    setGraphStats({
-      nodes: data.nodes ? (Array.isArray(data.nodes) ? data.nodes.length : data.nodes.length) : 0,
-      edges: data.edges ? (Array.isArray(data.edges) ? data.edges.length : data.edges.length) : 0,
-      nodeTypes,
-      edgeTypes
-    });
+    const data = {
+      nodes: visualizationData.nodes,
+      edges: visualizationData.edges
+    };
 
     const options: Options = {
       nodes: {
@@ -188,14 +187,11 @@ const GraphVisualization: React.FC = () => {
     networkInstance.current.on('selectNode', (params) => {
       if (params.nodes.length > 0) {
         const nodeId = params.nodes[0];
-        if (data.nodes) {
-          const nodes = Array.isArray(data.nodes) ? data.nodes : data.nodes.get();
-          const node = nodes.find((n: any) => n.id === nodeId) as GraphNode;
-          if (node) {
-            setSelectedNode(node);
-            setSelectedEdge(null);
-            setDrawerVisible(true);
-          }
+        const node = visualizationData.nodes.find((n) => n.id === nodeId) as GraphNode;
+        if (node) {
+          setSelectedNode(node);
+          setSelectedEdge(null);
+          setDrawerVisible(true);
         }
       }
     });
@@ -203,14 +199,11 @@ const GraphVisualization: React.FC = () => {
     networkInstance.current.on('selectEdge', (params) => {
       if (params.edges.length > 0) {
         const edgeId = params.edges[0];
-        if (data.edges) {
-          const edges = Array.isArray(data.edges) ? data.edges : data.edges.get();
-          const edge = edges.find((e: any) => e.id === edgeId) as GraphEdge;
-          if (edge) {
-            setSelectedEdge(edge);
-            setSelectedNode(null);
-            setDrawerVisible(true);
-          }
+        const edge = visualizationData.edges.find((e) => e.id === edgeId) as GraphEdge;
+        if (edge) {
+          setSelectedEdge(edge);
+          setSelectedNode(null);
+          setDrawerVisible(true);
         }
       }
     });
@@ -225,13 +218,25 @@ const GraphVisualization: React.FC = () => {
   };
 
   useEffect(() => {
-    initializeNetwork();
+    loadGraphs();
     return () => {
       if (networkInstance.current) {
         networkInstance.current.destroy();
       }
     };
+  }, []);
+
+  useEffect(() => {
+    if (selectedGraph) {
+      loadVisualizationData(selectedGraph);
+    }
   }, [selectedGraph]);
+
+  useEffect(() => {
+    if (visualizationData) {
+      initializeNetwork();
+    }
+  }, [visualizationData]);
 
   useEffect(() => {
     if (networkInstance.current) {
@@ -250,18 +255,14 @@ const GraphVisualization: React.FC = () => {
   }, [nodeSize, edgeWidth, showLabels, physics]);
 
   const handleSearch = () => {
-    if (!networkInstance.current || !searchText) return;
+    if (!networkInstance.current || !searchText || !visualizationData) return;
     
-    const data = generateMockData();
-    if (!data.nodes) return;
-    
-    const nodes = Array.isArray(data.nodes) ? data.nodes : data.nodes.get();
-    const matchedNodes = nodes.filter((node: any) => 
+    const matchedNodes = visualizationData.nodes.filter((node) => 
       node.label.toLowerCase().includes(searchText.toLowerCase())
     );
     
     if (matchedNodes.length > 0) {
-      const nodeIds = matchedNodes.map((node: any) => node.id);
+      const nodeIds = matchedNodes.map((node) => node.id);
       networkInstance.current.selectNodes(nodeIds);
       networkInstance.current.focus(nodeIds[0], {
         scale: 1.5,
@@ -290,6 +291,12 @@ const GraphVisualization: React.FC = () => {
   const handleReset = () => {
     if (networkInstance.current) {
       networkInstance.current.fit();
+    }
+  };
+
+  const handleRefresh = () => {
+    if (selectedGraph) {
+      loadVisualizationData(selectedGraph);
     }
   };
 
@@ -364,10 +371,13 @@ const GraphVisualization: React.FC = () => {
                 value={selectedGraph}
                 onChange={setSelectedGraph}
                 style={{ width: 150 }}
+                loading={loading}
               >
-                <Option value="1">AI技术图谱</Option>
-                <Option value="2">医学文献图谱</Option>
-                <Option value="3">法律条文图谱</Option>
+                {graphs.map((graph) => (
+                  <Option key={graph.id} value={graph.id}>
+                    {graph.name}
+                  </Option>
+                ))}
               </Select>
             </Space>
           </Col>
@@ -393,6 +403,9 @@ const GraphVisualization: React.FC = () => {
               <Tooltip title="重置视图">
                 <Button icon={<ReloadOutlined />} onClick={handleReset} />
               </Tooltip>
+              <Tooltip title="刷新数据">
+                <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} />
+              </Tooltip>
               <Tooltip title="全屏">
                 <Button icon={<FullscreenOutlined />} />
               </Tooltip>
@@ -408,19 +421,20 @@ const GraphVisualization: React.FC = () => {
             </Space>
           </Col>
         </Row>
-      </Card>
+       </Card>
 
       {/* 可视化区域 */}
       <Card>
-        <Row gutter={16}>
-          <Col xs={24} lg={18}>
-            <div 
-              ref={networkRef} 
-              id="network-container"
-              className="graph-container"
-              style={{ height: '600px', border: '1px solid #d9d9d9', borderRadius: '8px' }}
-            />
-          </Col>
+        <Spin spinning={loading} tip="加载图谱数据中...">
+          <Row gutter={16}>
+            <Col xs={24} lg={18}>
+              <div 
+                ref={networkRef} 
+                id="network-container"
+                className="graph-container"
+                style={{ height: '600px', border: '1px solid #d9d9d9', borderRadius: '8px' }}
+              />
+            </Col>
           
           <Col xs={24} lg={6}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -492,6 +506,7 @@ const GraphVisualization: React.FC = () => {
             </Space>
           </Col>
         </Row>
+        </Spin>
       </Card>
 
       {/* 详情抽屉 */}
@@ -505,20 +520,20 @@ const GraphVisualization: React.FC = () => {
         {selectedNode && (
           <div>
             <Descriptions column={1}>
-              <Descriptions.Item label="名称">{selectedNode.label}</Descriptions.Item>
+              <Descriptions.Item label="名称">{selectedNode?.label}</Descriptions.Item>
               <Descriptions.Item label="类型">
-                <Tag color={getNodeTypeColor(selectedNode.type)}>
-                  {getNodeTypeLabel(selectedNode.type)}
+                <Tag color={getNodeTypeColor(selectedNode?.type || '')}>
+                  {getNodeTypeLabel(selectedNode?.type || '')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="ID">{selectedNode.id}</Descriptions.Item>
+              <Descriptions.Item label="ID">{selectedNode?.id}</Descriptions.Item>
             </Descriptions>
             
-            {selectedNode.properties && (
+            {selectedNode?.properties && Object.keys(selectedNode.properties).length > 0 && (
               <div style={{ marginTop: 16 }}>
                 <Text strong>属性:</Text>
                 <div style={{ marginTop: 8 }}>
-                  {Object.entries(selectedNode.properties).map(([key, value]) => (
+                  {Object.entries(selectedNode.properties || {}).map(([key, value]) => (
                     <div key={key} style={{ marginBottom: 4 }}>
                       <Text code>{key}:</Text> {String(value)}
                     </div>
@@ -532,13 +547,13 @@ const GraphVisualization: React.FC = () => {
         {selectedEdge && (
           <div>
             <Descriptions column={1}>
-              <Descriptions.Item label="关系">{selectedEdge.label}</Descriptions.Item>
+              <Descriptions.Item label="关系">{selectedEdge?.label}</Descriptions.Item>
               <Descriptions.Item label="类型">
-                <Tag>{getEdgeTypeLabel(selectedEdge.type)}</Tag>
+                <Tag>{getEdgeTypeLabel(selectedEdge?.type || '')}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="源节点">{selectedEdge.from}</Descriptions.Item>
-              <Descriptions.Item label="目标节点">{selectedEdge.to}</Descriptions.Item>
-              {selectedEdge.weight && (
+              <Descriptions.Item label="源节点">{selectedEdge?.from}</Descriptions.Item>
+              <Descriptions.Item label="目标节点">{selectedEdge?.to}</Descriptions.Item>
+              {selectedEdge?.weight && (
                 <Descriptions.Item label="权重">{selectedEdge.weight}</Descriptions.Item>
               )}
             </Descriptions>

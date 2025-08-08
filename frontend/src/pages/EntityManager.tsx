@@ -29,24 +29,11 @@ import {
   FilterOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { apiService, Entity, Graph } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
-
-interface Entity {
-  id: string;
-  name: string;
-  type: string;
-  description?: string;
-  aliases?: string[];
-  properties?: Record<string, any>;
-  frequency: number;
-  graphId: string;
-  graphName: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 const EntityManager: React.FC = () => {
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -59,99 +46,56 @@ const EntityManager: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [graphFilter, setGraphFilter] = useState<string>('');
+  const [graphs, setGraphs] = useState<Graph[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
-    loadEntities();
+    loadGraphs();
   }, []);
+
+  // 当graphs数组更新时，重新加载实体
+  useEffect(() => {
+    if (graphs.length > 0) {
+      loadEntities();
+    }
+  }, [graphs, graphFilter]);
+
+  const loadGraphs = async () => {
+    try {
+      const graphList = await apiService.getGraphs();
+      setGraphs(graphList);
+    } catch (error) {
+      console.error('加载图谱列表失败:', error);
+      message.error('加载图谱列表失败');
+    }
+  };
 
   const loadEntities = async () => {
     setLoading(true);
-    // 模拟API调用
-    setTimeout(() => {
-      const mockData: Entity[] = [
-        {
-          id: '1',
-          name: '人工智能',
-          type: '概念',
-          description: '模拟人类智能的计算机科学分支',
-          aliases: ['AI', 'Artificial Intelligence'],
-          properties: { domain: '计算机科学', level: '高级' },
-          frequency: 156,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-15',
-          updatedAt: '2024-01-20'
-        },
-        {
-          id: '2',
-          name: '机器学习',
-          type: '概念',
-          description: '让计算机系统自动学习和改进的方法',
-          aliases: ['ML', 'Machine Learning'],
-          properties: { domain: '计算机科学', level: '中级' },
-          frequency: 134,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-15',
-          updatedAt: '2024-01-18'
-        },
-        {
-          id: '3',
-          name: '深度学习',
-          type: '概念',
-          description: '基于人工神经网络的机器学习方法',
-          aliases: ['DL', 'Deep Learning'],
-          properties: { domain: '计算机科学', level: '高级' },
-          frequency: 98,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-16',
-          updatedAt: '2024-01-19'
-        },
-        {
-          id: '4',
-          name: '神经网络',
-          type: '算法',
-          description: '模拟生物神经网络的计算模型',
-          aliases: ['NN', 'Neural Network'],
-          properties: { complexity: '高', applications: ['图像识别', '语音处理'] },
-          frequency: 87,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-16',
-          updatedAt: '2024-01-20'
-        },
-        {
-          id: '5',
-          name: '糖尿病',
-          type: '疾病',
-          description: '一组以高血糖为特征的代谢性疾病',
-          aliases: ['Diabetes'],
-          properties: { category: '内分泌疾病', severity: '慢性' },
-          frequency: 245,
-          graphId: '2',
-          graphName: '医学文献图谱',
-          createdAt: '2024-01-10',
-          updatedAt: '2024-01-18'
-        },
-        {
-          id: '6',
-          name: '胰岛素',
-          type: '药物',
-          description: '调节血糖水平的激素',
-          aliases: ['Insulin'],
-          properties: { type: '激素', function: '降血糖' },
-          frequency: 189,
-          graphId: '2',
-          graphName: '医学文献图谱',
-          createdAt: '2024-01-10',
-          updatedAt: '2024-01-17'
+    try {
+      // 如果有选中的图谱，加载该图谱的实体
+      if (graphFilter) {
+        const entityList = await apiService.getEntities(graphFilter);
+        setEntities(entityList);
+      } else {
+        // 否则加载所有图谱的实体
+        const allEntities: Entity[] = [];
+        for (const graph of graphs) {
+          try {
+            const entityList = await apiService.getEntities(graph.id);
+            allEntities.push(...entityList);
+          } catch (error) {
+            console.error(`加载图谱 ${graph.name} 的实体失败:`, error);
+          }
         }
-      ];
-      setEntities(mockData);
+        setEntities(allEntities);
+      }
+    } catch (error) {
+      console.error('加载实体失败:', error);
+      message.error('加载实体失败');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleView = (record: Entity) => {
@@ -170,19 +114,23 @@ const EntityManager: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      setEntities(entities.filter(e => e.id !== id));
+      await apiService.deleteEntity(id);
       message.success('删除成功');
+      loadEntities(); // 重新加载实体列表
     } catch (error) {
+      console.error('删除失败:', error);
       message.error('删除失败');
     }
   };
 
   const handleBatchDelete = async () => {
     try {
-      setEntities(entities.filter(e => !selectedRowKeys.includes(e.id)));
+      await Promise.all(selectedRowKeys.map(id => apiService.deleteEntity(id as string)));
       setSelectedRowKeys([]);
       message.success(`批量删除 ${selectedRowKeys.length} 个实体`);
+      loadEntities(); // 重新加载实体列表
     } catch (error) {
+      console.error('批量删除失败:', error);
       message.error('批量删除失败');
     }
   };
@@ -194,30 +142,30 @@ const EntityManager: React.FC = () => {
       
       if (editingEntity) {
         // 更新实体
-        setEntities(entities.map(e => 
-          e.id === editingEntity.id 
-            ? { ...e, ...values, aliases, updatedAt: new Date().toISOString().split('T')[0] }
-            : e
-        ));
+        await apiService.updateEntity(editingEntity.id, {
+          name: values.name,
+          type: values.type,
+          description: values.description,
+          graph_id: values.graph_id
+        });
         message.success('更新成功');
       } else {
         // 创建新实体
-        const newEntity: Entity = {
-          id: Date.now().toString(),
-          ...values,
-          aliases,
-          frequency: 0,
-          createdAt: new Date().toISOString().split('T')[0],
-          updatedAt: new Date().toISOString().split('T')[0]
-        };
-        setEntities([...entities, newEntity]);
+        await apiService.createEntity({
+          name: values.name,
+          type: values.type,
+          description: values.description,
+          graph_id: values.graph_id
+        });
         message.success('创建成功');
       }
       setIsModalVisible(false);
       setEditingEntity(null);
       form.resetFields();
+      loadEntities(); // 重新加载实体列表
     } catch (error) {
-      console.error('Validation failed:', error);
+      console.error('操作失败:', error);
+      message.error('操作失败');
     }
   };
 
@@ -294,15 +242,19 @@ const EntityManager: React.FC = () => {
     },
     {
       title: '所属图谱',
-      dataIndex: 'graphName',
-      key: 'graphName',
+      dataIndex: 'graph_id',
+      key: 'graph_id',
+      render: (graphId: string) => {
+        const graph = graphs.find(g => g.id === graphId);
+        return graph ? graph.name : graphId;
+      },
       filters: [
         { text: 'AI技术图谱', value: 'AI技术图谱' },
         { text: '医学文献图谱', value: '医学文献图谱' },
         { text: '法律条文图谱', value: '法律条文图谱' }
       ],
       filteredValue: graphFilter ? [graphFilter] : null,
-      onFilter: (value, record) => record.graphName === value
+      onFilter: (value, record) => record.graph_id === value
     },
     {
       title: '描述',
@@ -317,9 +269,9 @@ const EntityManager: React.FC = () => {
     },
     {
       title: '更新时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
-      sorter: (a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      sorter: (a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
     },
     {
       title: '操作',
@@ -469,11 +421,17 @@ const EntityManager: React.FC = () => {
               placeholder="图谱筛选"
               allowClear
               style={{ width: 150 }}
-              onChange={setGraphFilter}
+              onChange={(value) => {
+                setGraphFilter(value || '');
+                // 当图谱筛选改变时重新加载实体
+                setTimeout(() => loadEntities(), 100);
+              }}
             >
-              <Option value="AI技术图谱">AI技术图谱</Option>
-              <Option value="医学文献图谱">医学文献图谱</Option>
-              <Option value="法律条文图谱">法律条文图谱</Option>
+              {graphs.map((graph) => (
+                <Option key={graph.id} value={graph.id}>
+                  {graph.name}
+                </Option>
+              ))}
             </Select>
           </Space>
         </div>
@@ -551,14 +509,16 @@ const EntityManager: React.FC = () => {
           </Form.Item>
           
           <Form.Item
-            name="graphId"
+            name="graph_id"
             label="所属图谱"
             rules={[{ required: true, message: '请选择所属图谱' }]}
           >
             <Select placeholder="请选择所属图谱">
-              <Option value="1">AI技术图谱</Option>
-              <Option value="2">医学文献图谱</Option>
-              <Option value="3">法律条文图谱</Option>
+              {graphs.map((graph) => (
+                <Option key={graph.id} value={graph.id}>
+                  {graph.name}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
         </Form>
@@ -592,7 +552,10 @@ const EntityManager: React.FC = () => {
                 />
               </Descriptions.Item>
               <Descriptions.Item label="所属图谱" span={2}>
-                {viewingEntity.graphName}
+                {(() => {
+                  const graph = graphs.find(g => g.id === viewingEntity.graph_id);
+                  return graph ? graph.name : viewingEntity.graph_id;
+                })()}
               </Descriptions.Item>
               {viewingEntity.description && (
                 <Descriptions.Item label="描述" span={2}>
@@ -607,25 +570,14 @@ const EntityManager: React.FC = () => {
                 </Descriptions.Item>
               )}
               <Descriptions.Item label="创建时间">
-                {viewingEntity.createdAt}
+                {viewingEntity.created_at}
               </Descriptions.Item>
               <Descriptions.Item label="更新时间">
-                {viewingEntity.updatedAt}
+                {viewingEntity.updated_at}
               </Descriptions.Item>
             </Descriptions>
             
-            {viewingEntity.properties && Object.keys(viewingEntity.properties).length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <Title level={5}>扩展属性</Title>
-                <Descriptions column={1} size="small" bordered>
-                  {Object.entries(viewingEntity.properties).map(([key, value]) => (
-                    <Descriptions.Item key={key} label={key}>
-                      {Array.isArray(value) ? value.join(', ') : String(value)}
-                    </Descriptions.Item>
-                  ))}
-                </Descriptions>
-              </div>
-            )}
+
           </div>
         )}
       </Modal>

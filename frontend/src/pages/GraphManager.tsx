@@ -28,31 +28,21 @@ import {
   FilterOutlined,
   DatabaseOutlined
 } from '@ant-design/icons';
+import { apiService, Graph } from '../services/api';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Paragraph } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-interface GraphData {
-  id: string;
-  name: string;
-  description: string;
-  entities: number;
-  relations: number;
-  documents: number;
-  status: 'active' | 'inactive' | 'processing';
-  createdAt: string;
-  updatedAt: string;
-  size: string;
-}
+// 使用API中定义的Graph类型
 
 const GraphManager: React.FC = () => {
-  const [graphs, setGraphs] = useState<GraphData[]>([]);
+  const [graphs, setGraphs] = useState<Graph[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingGraph, setEditingGraph] = useState<GraphData | null>(null);
+  const [editingGraph, setEditingGraph] = useState<Graph | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [form] = Form.useForm();
@@ -63,95 +53,62 @@ const GraphManager: React.FC = () => {
 
   const loadGraphs = async () => {
     setLoading(true);
-    // 模拟API调用
-    setTimeout(() => {
-      const mockData: GraphData[] = [
-        {
-          id: '1',
-          name: 'AI技术知识图谱',
-          description: '人工智能相关技术和概念的知识图谱',
-          entities: 1248,
-          relations: 3567,
-          documents: 15,
-          status: 'active',
-          createdAt: '2024-01-15',
-          updatedAt: '2024-01-20',
-          size: '12.5 MB'
-        },
-        {
-          id: '2',
-          name: '医学文献图谱',
-          description: '医学研究文献构建的知识图谱',
-          entities: 2156,
-          relations: 4892,
-          documents: 28,
-          status: 'active',
-          createdAt: '2024-01-10',
-          updatedAt: '2024-01-18',
-          size: '18.7 MB'
-        },
-        {
-          id: '3',
-          name: '法律条文图谱',
-          description: '法律法规相关的知识图谱',
-          entities: 856,
-          relations: 1923,
-          documents: 8,
-          status: 'processing',
-          createdAt: '2024-01-22',
-          updatedAt: '2024-01-22',
-          size: '6.3 MB'
-        },
-        {
-          id: '4',
-          name: '企业管理图谱',
-          description: '企业管理理论和实践的知识图谱',
-          entities: 634,
-          relations: 1245,
-          documents: 12,
-          status: 'inactive',
-          createdAt: '2024-01-05',
-          updatedAt: '2024-01-12',
-          size: '4.8 MB'
-        }
-      ];
-      setGraphs(mockData);
+    try {
+      const graphsData = await apiService.getGraphs();
+      setGraphs(graphsData);
+    } catch (error) {
+      console.error('加载图谱列表失败:', error);
+      message.error('加载图谱列表失败');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
-  const handleView = (record: GraphData) => {
+  const handleView = (record: Graph) => {
     message.info(`查看图谱: ${record.name}`);
     // 这里可以跳转到可视化页面
   };
 
-  const handleEdit = (record: GraphData) => {
+  const handleEdit = (record: Graph) => {
     setEditingGraph(record);
-    form.setFieldsValue(record);
+    form.setFieldsValue({
+      name: record.name,
+      description: record.description
+    });
     setIsModalVisible(true);
   };
 
   const handleDelete = async (id: string) => {
     try {
-      // 模拟删除API调用
-      setGraphs(graphs.filter(g => g.id !== id));
+      await apiService.deleteGraph(id);
       message.success('删除成功');
+      loadGraphs(); // 重新加载列表
     } catch (error) {
+      console.error('删除失败:', error);
       message.error('删除失败');
     }
   };
 
   const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请选择要删除的图谱');
+      return;
+    }
+
     try {
-      setGraphs(graphs.filter(g => !selectedRowKeys.includes(g.id)));
+      // 批量删除API调用
+      for (const id of selectedRowKeys) {
+        await apiService.deleteGraph(id as string);
+      }
       setSelectedRowKeys([]);
-      message.success(`批量删除 ${selectedRowKeys.length} 个图谱`);
+      message.success(`成功删除 ${selectedRowKeys.length} 个图谱`);
+      loadGraphs(); // 重新加载列表
     } catch (error) {
       message.error('批量删除失败');
     }
   };
 
-  const handleExport = (record: GraphData) => {
+  const handleExport = (record: Graph) => {
     message.info(`导出图谱: ${record.name}`);
     // 这里可以实现导出功能
   };
@@ -161,33 +118,20 @@ const GraphManager: React.FC = () => {
       const values = await form.validateFields();
       if (editingGraph) {
         // 更新图谱
-        setGraphs(graphs.map(g => 
-          g.id === editingGraph.id 
-            ? { ...g, ...values, updatedAt: new Date().toISOString().split('T')[0] }
-            : g
-        ));
+        await apiService.updateGraph(editingGraph.id, values);
         message.success('更新成功');
       } else {
         // 创建新图谱
-        const newGraph: GraphData = {
-          id: Date.now().toString(),
-          ...values,
-          entities: 0,
-          relations: 0,
-          documents: 0,
-          status: 'inactive' as const,
-          createdAt: new Date().toISOString().split('T')[0],
-          updatedAt: new Date().toISOString().split('T')[0],
-          size: '0 MB'
-        };
-        setGraphs([...graphs, newGraph]);
+        await apiService.createGraph(values);
         message.success('创建成功');
       }
       setIsModalVisible(false);
       setEditingGraph(null);
       form.resetFields();
+      loadGraphs(); // 重新加载列表
     } catch (error) {
-      console.error('Validation failed:', error);
+      console.error('操作失败:', error);
+      message.error('操作失败');
     }
   };
 
@@ -215,7 +159,7 @@ const GraphManager: React.FC = () => {
     }
   };
 
-  const columns: ColumnsType<GraphData> = [
+  const columns: ColumnsType<Graph> = [
     {
       title: '图谱名称',
       dataIndex: 'name',
@@ -233,23 +177,24 @@ const GraphManager: React.FC = () => {
     },
     {
       title: '实体数',
-      dataIndex: 'entities',
-      key: 'entities',
-      sorter: (a, b) => a.entities - b.entities,
+      dataIndex: 'entity_count',
+      key: 'entity_count',
+      sorter: (a, b) => a.entity_count - b.entity_count,
       render: (value) => value.toLocaleString()
     },
     {
       title: '关系数',
-      dataIndex: 'relations',
-      key: 'relations',
-      sorter: (a, b) => a.relations - b.relations,
+      dataIndex: 'relation_count',
+      key: 'relation_count',
+      sorter: (a, b) => a.relation_count - b.relation_count,
       render: (value) => value.toLocaleString()
     },
     {
-      title: '文档数',
-      dataIndex: 'documents',
-      key: 'documents',
-      sorter: (a, b) => a.documents - b.documents
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      render: (text: string) => new Date(text).toLocaleDateString()
     },
     {
       title: '状态',
@@ -268,21 +213,13 @@ const GraphManager: React.FC = () => {
         </Tag>
       )
     },
-    {
-      title: '大小',
-      dataIndex: 'size',
-      key: 'size',
-      sorter: (a, b) => {
-        const aSize = parseFloat(a.size.replace(' MB', ''));
-        const bSize = parseFloat(b.size.replace(' MB', ''));
-        return aSize - bSize;
-      }
-    },
+
     {
       title: '更新时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
-      sorter: (a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      sorter: (a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime(),
+      render: (text: string) => new Date(text).toLocaleDateString()
     },
     {
       title: '操作',
@@ -336,9 +273,9 @@ const GraphManager: React.FC = () => {
     }
   };
 
-  const totalEntities = graphs.reduce((sum, graph) => sum + graph.entities, 0);
-  const totalRelations = graphs.reduce((sum, graph) => sum + graph.relations, 0);
-  const totalDocuments = graphs.reduce((sum, graph) => sum + graph.documents, 0);
+  const totalEntities = graphs.reduce((sum, graph) => sum + graph.entity_count, 0);
+  const totalRelations = graphs.reduce((sum, graph) => sum + graph.relation_count, 0);
+  const totalGraphs = graphs.length;
   const activeGraphs = graphs.filter(g => g.status === 'active').length;
 
   return (
@@ -356,7 +293,7 @@ const GraphManager: React.FC = () => {
           <Card>
             <Statistic
               title="图谱总数"
-              value={graphs.length}
+              value={totalGraphs}
               prefix={<DatabaseOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />

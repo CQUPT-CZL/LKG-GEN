@@ -1,0 +1,376 @@
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+import os
+import json
+import uuid
+import shutil
+from datetime import datetime
+import asyncio
+from pathlib import Path
+
+# 导入知识图谱构建模块
+from kg_builder import KnowledgeGraphBuilder
+from data_manager import DataManager
+
+app = FastAPI(title="知识图谱生成系统 API", version="1.0.0")
+
+# 配置CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # React开发服务器
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 初始化数据管理器
+data_manager = DataManager()
+kg_builder = KnowledgeGraphBuilder()
+
+# 数据模型定义
+class GraphCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+
+class EntityCreateRequest(BaseModel):
+    name: str
+    type: str
+    description: Optional[str] = ""
+    graph_id: str
+
+class RelationCreateRequest(BaseModel):
+    source_entity_id: str
+    target_entity_id: str
+    relation_type: str
+    confidence: Optional[float] = 1.0
+    description: Optional[str] = ""
+    graph_id: str
+
+class ProcessingStatus(BaseModel):
+    task_id: str
+    status: str  # pending, processing, completed, failed
+    progress: int  # 0-100
+    message: str
+    result: Optional[Dict[str, Any]] = None
+
+# 全局任务状态存储
+task_status: Dict[str, ProcessingStatus] = {}
+
+# API路由
+
+@app.get("/")
+async def root():
+    return {"message": "知识图谱生成系统 API 服务正在运行"}
+
+# 健康检查
+@app.get("/api/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+# 统计信息
+@app.get("/api/stats")
+async def get_stats():
+    """获取系统统计信息"""
+    try:
+        stats = data_manager.get_system_stats()
+        return stats
+    except Exception as e:
+        import traceback
+        print(f"Error in get_stats: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 图谱管理
+@app.get("/api/graphs")
+async def get_graphs():
+    """获取所有知识图谱"""
+    try:
+        graphs = data_manager.get_all_graphs()
+        return graphs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/graphs")
+async def create_graph(graph_data: GraphCreateRequest):
+    """创建新的知识图谱"""
+    try:
+        graph = data_manager.create_graph(
+            name=graph_data.name,
+            description=graph_data.description
+        )
+        return graph
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/graphs/{graph_id}")
+async def get_graph(graph_id: str):
+    """获取指定知识图谱的详细信息"""
+    try:
+        graph = data_manager.get_graph(graph_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail="图谱不存在")
+        return graph
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/graphs/{graph_id}")
+async def update_graph(graph_id: str, graph_data: GraphCreateRequest):
+    """更新知识图谱信息"""
+    try:
+        graph = data_manager.update_graph(
+            graph_id=graph_id,
+            name=graph_data.name,
+            description=graph_data.description
+        )
+        if not graph:
+            raise HTTPException(status_code=404, detail="图谱不存在")
+        return graph
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/graphs/{graph_id}")
+async def delete_graph(graph_id: str):
+    """删除知识图谱"""
+    try:
+        success = data_manager.delete_graph(graph_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="图谱不存在")
+        return {"message": "图谱删除成功"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 文档上传和处理
+from fastapi import Form
+
+@app.post("/api/documents/upload")
+async def upload_document(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...),
+    build_mode: str = Form("standalone"),  # standalone 或 append
+    target_graph_id: Optional[str] = Form(None)  # 当build_mode为append时指定目标图谱ID
+):
+    """上传文档并开始知识图谱构建
+    
+    Args:
+        file: 上传的文档文件
+        build_mode: 构建模式，'standalone'(独立构建) 或 'append'(附加到现有图谱)
+        target_graph_id: 当build_mode为'append'时，指定要附加到的图谱ID
+    """
+    try:
+        # 验证构建模式
+        if build_mode not in ["standalone", "append"]:
+            raise HTTPException(status_code=400, detail="构建模式必须是 'standalone' 或 'append'")
+        
+        # 如果是附加模式，验证目标图谱是否存在
+        if build_mode == "append":
+            if not target_graph_id:
+                raise HTTPException(status_code=400, detail="附加模式下必须指定目标图谱ID")
+            # 验证图谱是否存在
+            target_graph = data_manager.get_graph(target_graph_id)
+            if not target_graph:
+                raise HTTPException(status_code=404, detail="目标图谱不存在")
+        
+        # 生成任务ID
+        task_id = str(uuid.uuid4())
+        
+        # 保存上传的文件
+        upload_dir = Path("uploads")
+        upload_dir.mkdir(exist_ok=True)
+        
+        file_path = upload_dir / f"{task_id}_{file.filename}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 初始化任务状态
+        task_status[task_id] = ProcessingStatus(
+            task_id=task_id,
+            status="pending",
+            progress=0,
+            message=f"文档上传成功，等待处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+        )
+        
+        # 添加后台任务
+        background_tasks.add_task(
+            process_document, 
+            task_id, 
+            str(file_path), 
+            file.filename, 
+            build_mode, 
+            target_graph_id
+        )
+        
+        return {
+            "task_id": task_id,
+            "message": f"文档上传成功，开始处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})",
+            "filename": file.filename,
+            "build_mode": build_mode,
+            "target_graph_id": target_graph_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/tasks/{task_id}/status")
+async def get_task_status(task_id: str):
+    """获取任务处理状态"""
+    if task_id not in task_status:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return task_status[task_id]
+
+# 实体管理
+@app.get("/api/graphs/{graph_id}/entities")
+async def get_entities(graph_id: str):
+    """获取图谱中的所有实体"""
+    try:
+        entities = data_manager.get_entities(graph_id)
+        return entities
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/entities")
+async def create_entity(entity_data: EntityCreateRequest):
+    """创建新实体"""
+    try:
+        entity = data_manager.create_entity(
+            name=entity_data.name,
+            entity_type=entity_data.type,
+            description=entity_data.description,
+            graph_id=entity_data.graph_id
+        )
+        return entity
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/entities/{entity_id}")
+async def update_entity(entity_id: str, entity_data: EntityCreateRequest):
+    """更新实体信息"""
+    try:
+        entity = data_manager.update_entity(
+            entity_id=entity_id,
+            name=entity_data.name,
+            entity_type=entity_data.type,
+            description=entity_data.description
+        )
+        if not entity:
+            raise HTTPException(status_code=404, detail="实体不存在")
+        return entity
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/entities/{entity_id}")
+async def delete_entity(entity_id: str):
+    """删除实体"""
+    try:
+        success = data_manager.delete_entity(entity_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="实体不存在")
+        return {"message": "实体删除成功"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 关系管理
+@app.get("/api/graphs/{graph_id}/relations")
+async def get_relations(graph_id: str):
+    """获取图谱中的所有关系"""
+    try:
+        relations = data_manager.get_relations(graph_id)
+        return relations
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/relations")
+async def create_relation(relation_data: RelationCreateRequest):
+    """创建新关系"""
+    try:
+        relation = data_manager.create_relation(
+            source_entity_id=relation_data.source_entity_id,
+            target_entity_id=relation_data.target_entity_id,
+            relation_type=relation_data.relation_type,
+            confidence=relation_data.confidence,
+            description=relation_data.description,
+            graph_id=relation_data.graph_id
+        )
+        return relation
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/relations/{relation_id}")
+async def delete_relation(relation_id: str):
+    """删除关系"""
+    try:
+        success = data_manager.delete_relation(relation_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="关系不存在")
+        return {"message": "关系删除成功"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 图谱可视化数据
+@app.get("/api/graphs/{graph_id}/visualization")
+async def get_graph_visualization(graph_id: str):
+    """获取图谱可视化数据"""
+    try:
+        vis_data = data_manager.get_graph_visualization_data(graph_id)
+        if not vis_data:
+            raise HTTPException(status_code=404, detail="图谱不存在")
+        return vis_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 后台任务函数
+async def process_document(
+    task_id: str, 
+    file_path: str, 
+    filename: str, 
+    build_mode: str = "standalone", 
+    target_graph_id: Optional[str] = None
+):
+    """后台处理文档的异步任务
+    
+    Args:
+        task_id: 任务ID
+        file_path: 文档文件路径
+        filename: 文档文件名
+        build_mode: 构建模式，'standalone' 或 'append'
+        target_graph_id: 当build_mode为'append'时的目标图谱ID
+    """
+    try:
+        # 更新状态：开始处理
+        task_status[task_id].status = "processing"
+        task_status[task_id].progress = 10
+        task_status[task_id].message = f"开始文档处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+        
+        # 调用知识图谱构建器
+        result = await kg_builder.process_document(
+            file_path=file_path,
+            filename=filename,
+            build_mode=build_mode,
+            target_graph_id=target_graph_id,
+            progress_callback=lambda progress, message: update_task_progress(task_id, progress, message)
+        )
+        
+        # 处理完成
+        task_status[task_id].status = "completed"
+        task_status[task_id].progress = 100
+        task_status[task_id].message = f"文档处理完成 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+        task_status[task_id].result = result
+        
+    except Exception as e:
+        # 处理失败
+        task_status[task_id].status = "failed"
+        task_status[task_id].message = f"处理失败: {str(e)}"
+        print(f"任务 {task_id} 处理失败: {e}")
+        import traceback
+        print(f"详细错误信息: {traceback.format_exc()}")
+
+def update_task_progress(task_id: str, progress: int, message: str):
+    """更新任务进度"""
+    if task_id in task_status:
+        task_status[task_id].progress = progress
+        task_status[task_id].message = message
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

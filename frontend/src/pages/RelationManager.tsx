@@ -30,26 +30,11 @@ import {
   ArrowRightOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { apiService, Relation, Graph } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
-
-interface Relation {
-  id: string;
-  name: string;
-  type: string;
-  sourceEntity: string;
-  targetEntity: string;
-  description?: string;
-  properties?: Record<string, any>;
-  confidence: number;
-  frequency: number;
-  graphId: string;
-  graphName: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 const RelationManager: React.FC = () => {
   const [relations, setRelations] = useState<Relation[]>([]);
@@ -62,126 +47,56 @@ const RelationManager: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [graphFilter, setGraphFilter] = useState<string>('');
+  const [graphs, setGraphs] = useState<Graph[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
-    loadRelations();
+    loadGraphs();
   }, []);
+
+  // 当graphs数组更新时，重新加载关系
+  useEffect(() => {
+    if (graphs.length > 0) {
+      loadRelations();
+    }
+  }, [graphs, graphFilter]);
+
+  const loadGraphs = async () => {
+    try {
+      const graphList = await apiService.getGraphs();
+      setGraphs(graphList);
+    } catch (error) {
+      console.error('加载图谱列表失败:', error);
+      message.error('加载图谱列表失败');
+    }
+  };
 
   const loadRelations = async () => {
     setLoading(true);
-    // 模拟API调用
-    setTimeout(() => {
-      const mockData: Relation[] = [
-        {
-          id: '1',
-          name: '包含',
-          type: '层次关系',
-          sourceEntity: '人工智能',
-          targetEntity: '机器学习',
-          description: '人工智能包含机器学习作为其子领域',
-          properties: { strength: '强', direction: '单向' },
-          confidence: 0.95,
-          frequency: 89,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-15',
-          updatedAt: '2024-01-20'
-        },
-        {
-          id: '2',
-          name: '基于',
-          type: '依赖关系',
-          sourceEntity: '深度学习',
-          targetEntity: '神经网络',
-          description: '深度学习基于神经网络技术实现',
-          properties: { strength: '强', direction: '单向' },
-          confidence: 0.92,
-          frequency: 76,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-16',
-          updatedAt: '2024-01-19'
-        },
-        {
-          id: '3',
-          name: '应用于',
-          type: '应用关系',
-          sourceEntity: '机器学习',
-          targetEntity: '图像识别',
-          description: '机器学习技术应用于图像识别领域',
-          properties: { strength: '中', direction: '单向' },
-          confidence: 0.88,
-          frequency: 54,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-17',
-          updatedAt: '2024-01-18'
-        },
-        {
-          id: '4',
-          name: '相似于',
-          type: '相似关系',
-          sourceEntity: '卷积神经网络',
-          targetEntity: '循环神经网络',
-          description: '两种神经网络架构在某些方面具有相似性',
-          properties: { strength: '弱', direction: '双向' },
-          confidence: 0.72,
-          frequency: 23,
-          graphId: '1',
-          graphName: 'AI技术图谱',
-          createdAt: '2024-01-18',
-          updatedAt: '2024-01-20'
-        },
-        {
-          id: '5',
-          name: '导致',
-          type: '因果关系',
-          sourceEntity: '高血糖',
-          targetEntity: '糖尿病',
-          description: '持续高血糖状态可能导致糖尿病',
-          properties: { strength: '强', direction: '单向' },
-          confidence: 0.89,
-          frequency: 156,
-          graphId: '2',
-          graphName: '医学文献图谱',
-          createdAt: '2024-01-10',
-          updatedAt: '2024-01-18'
-        },
-        {
-          id: '6',
-          name: '治疗',
-          type: '治疗关系',
-          sourceEntity: '胰岛素',
-          targetEntity: '糖尿病',
-          description: '胰岛素用于治疗糖尿病',
-          properties: { strength: '强', direction: '单向' },
-          confidence: 0.96,
-          frequency: 234,
-          graphId: '2',
-          graphName: '医学文献图谱',
-          createdAt: '2024-01-10',
-          updatedAt: '2024-01-17'
-        },
-        {
-          id: '7',
-          name: '副作用',
-          type: '副作用关系',
-          sourceEntity: '胰岛素',
-          targetEntity: '低血糖',
-          description: '胰岛素使用可能引起低血糖副作用',
-          properties: { strength: '中', direction: '单向' },
-          confidence: 0.78,
-          frequency: 67,
-          graphId: '2',
-          graphName: '医学文献图谱',
-          createdAt: '2024-01-12',
-          updatedAt: '2024-01-16'
+    try {
+      // 如果有选中的图谱，加载该图谱的关系
+      if (graphFilter) {
+        const relationList = await apiService.getRelations(graphFilter);
+        setRelations(relationList);
+      } else {
+        // 否则加载所有图谱的关系
+        const allRelations: Relation[] = [];
+        for (const graph of graphs) {
+          try {
+            const relationList = await apiService.getRelations(graph.id);
+            allRelations.push(...relationList);
+          } catch (error) {
+            console.error(`加载图谱 ${graph.name} 的关系失败:`, error);
+          }
         }
-      ];
-      setRelations(mockData);
+        setRelations(allRelations);
+      }
+    } catch (error) {
+      console.error('加载关系失败:', error);
+      message.error('加载关系失败');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleView = (record: Relation) => {
@@ -197,19 +112,23 @@ const RelationManager: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      setRelations(relations.filter(r => r.id !== id));
+      await apiService.deleteRelation(id);
       message.success('删除成功');
+      loadRelations(); // 重新加载关系列表
     } catch (error) {
+      console.error('删除失败:', error);
       message.error('删除失败');
     }
   };
 
   const handleBatchDelete = async () => {
     try {
-      setRelations(relations.filter(r => !selectedRowKeys.includes(r.id)));
+      await Promise.all(selectedRowKeys.map(id => apiService.deleteRelation(id as string)));
       setSelectedRowKeys([]);
       message.success(`批量删除 ${selectedRowKeys.length} 个关系`);
+      loadRelations(); // 重新加载关系列表
     } catch (error) {
+      console.error('批量删除失败:', error);
       message.error('批量删除失败');
     }
   };
@@ -219,21 +138,22 @@ const RelationManager: React.FC = () => {
       const values = await form.validateFields();
       
       if (editingRelation) {
-        // 更新关系
+        // 更新关系 - 暂时使用前端更新，等待后端API实现
         setRelations(relations.map(r => 
           r.id === editingRelation.id 
-            ? { ...r, ...values, updatedAt: new Date().toISOString().split('T')[0] }
+            ? { ...r, ...values, updated_at: new Date().toISOString() }
             : r
         ));
         message.success('更新成功');
       } else {
-        // 创建新关系
+        // 创建新关系 - 暂时使用前端创建，等待后端API实现
         const newRelation: Relation = {
           id: Date.now().toString(),
+          source_entity_name: '',
+          target_entity_name: '',
           ...values,
-          frequency: 0,
-          createdAt: new Date().toISOString().split('T')[0],
-          updatedAt: new Date().toISOString().split('T')[0]
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
         setRelations([...relations, newRelation]);
         message.success('创建成功');
@@ -242,7 +162,8 @@ const RelationManager: React.FC = () => {
       setEditingRelation(null);
       form.resetFields();
     } catch (error) {
-      console.error('Validation failed:', error);
+      console.error('操作失败:', error);
+      message.error(editingRelation ? '更新失败' : '创建失败');
     }
   };
 
@@ -280,26 +201,26 @@ const RelationManager: React.FC = () => {
       filteredValue: searchText ? [searchText] : null,
       onFilter: (value, record) => {
         const searchValue = value.toString().toLowerCase();
-        return record.name.toLowerCase().includes(searchValue) ||
+        return (record.source_entity_name || record.source_entity_id || '').toLowerCase().includes(searchValue) ||
           (record.description?.toLowerCase().includes(searchValue) || false) ||
-          record.sourceEntity.toLowerCase().includes(searchValue) ||
-          record.targetEntity.toLowerCase().includes(searchValue);
+          (record.target_entity_name || record.target_entity_id || '').toLowerCase().includes(searchValue) ||
+          (record.relation_type || '').toLowerCase().includes(searchValue);
       },
       render: (text, record) => (
         <div>
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{text}</div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            <Text>{record.sourceEntity}</Text>
+            <Text>{record.source_entity_name || record.source_entity_id}</Text>
             <ArrowRightOutlined style={{ margin: '0 8px', color: '#1890ff' }} />
-            <Text>{record.targetEntity}</Text>
+            <Text>{record.target_entity_name || record.target_entity_id}</Text>
           </div>
         </div>
       )
     },
     {
       title: '关系类型',
-      dataIndex: 'type',
-      key: 'type',
+      dataIndex: 'relation_type',
+      key: 'relation_type',
       filters: [
         { text: '层次关系', value: '层次关系' },
         { text: '依赖关系', value: '依赖关系' },
@@ -310,7 +231,7 @@ const RelationManager: React.FC = () => {
         { text: '副作用关系', value: '副作用关系' }
       ],
       filteredValue: typeFilter ? [typeFilter] : null,
-      onFilter: (value, record) => record.type === value,
+      onFilter: (value, record) => record.relation_type === value,
       render: (type) => (
         <Tag color={getTypeColor(type)}>{type}</Tag>
       )
@@ -333,18 +254,7 @@ const RelationManager: React.FC = () => {
         </div>
       )
     },
-    {
-      title: '频次',
-      dataIndex: 'frequency',
-      key: 'frequency',
-      sorter: (a, b) => a.frequency - b.frequency,
-      render: (frequency) => (
-        <Badge 
-          count={frequency} 
-          style={{ backgroundColor: frequency > 100 ? '#52c41a' : '#1890ff' }}
-        />
-      )
-    },
+
     {
       title: '所属图谱',
       dataIndex: 'graphName',
@@ -355,7 +265,7 @@ const RelationManager: React.FC = () => {
         { text: '法律条文图谱', value: '法律条文图谱' }
       ],
       filteredValue: graphFilter ? [graphFilter] : null,
-      onFilter: (value, record) => record.graphName === value
+      onFilter: (value, record) => record.graph_id === value
     },
     {
       title: '描述',
@@ -370,9 +280,9 @@ const RelationManager: React.FC = () => {
     },
     {
       title: '更新时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
-      sorter: (a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      sorter: (a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
     },
     {
       title: '操作',
@@ -419,12 +329,11 @@ const RelationManager: React.FC = () => {
     }
   };
 
-  const relationTypes = Array.from(new Set(relations.map(r => r.type)));
-  const totalFrequency = relations.reduce((sum, relation) => sum + relation.frequency, 0);
+  const relationTypes = Array.from(new Set(relations.map(r => r.relation_type)));
   const avgConfidence = relations.length > 0 
-    ? Math.round(relations.reduce((sum, r) => sum + r.confidence, 0) / relations.length * 100) 
+    ? Math.round(relations.reduce((sum, r) => sum + (r.confidence || 0), 0) / relations.length * 100) 
     : 0;
-  const highConfidenceRelations = relations.filter(r => r.confidence >= 0.9).length;
+  const highConfidenceRelations = relations.filter(r => (r.confidence || 0) >= 0.9).length;
 
   return (
     <div>
@@ -525,11 +434,17 @@ const RelationManager: React.FC = () => {
               placeholder="图谱筛选"
               allowClear
               style={{ width: 150 }}
-              onChange={setGraphFilter}
+              onChange={(value) => {
+                setGraphFilter(value);
+                // 当图谱筛选改变时，重新加载关系
+                if (value) {
+                  loadRelations();
+                }
+              }}
             >
-              <Option value="AI技术图谱">AI技术图谱</Option>
-              <Option value="医学文献图谱">医学文献图谱</Option>
-              <Option value="法律条文图谱">法律条文图谱</Option>
+              {graphs.map(graph => (
+                <Option key={graph.id} value={graph.id}>{graph.name}</Option>
+              ))}
             </Select>
           </Space>
         </div>
@@ -565,46 +480,30 @@ const RelationManager: React.FC = () => {
           layout="vertical"
         >
           <Form.Item
-            name="name"
-            label="关系名称"
-            rules={[{ required: true, message: '请输入关系名称' }]}
-          >
-            <Input placeholder="请输入关系名称" />
-          </Form.Item>
-          
-          <Form.Item
-            name="type"
-            label="关系类型"
-            rules={[{ required: true, message: '请选择关系类型' }]}
-          >
-            <Select placeholder="请选择关系类型">
-              <Option value="层次关系">层次关系</Option>
-              <Option value="依赖关系">依赖关系</Option>
-              <Option value="应用关系">应用关系</Option>
-              <Option value="相似关系">相似关系</Option>
-              <Option value="因果关系">因果关系</Option>
-              <Option value="治疗关系">治疗关系</Option>
-              <Option value="副作用关系">副作用关系</Option>
-            </Select>
-          </Form.Item>
+              name="relation_type"
+              label="关系类型"
+              rules={[{ required: true, message: '请输入关系类型' }]}
+            >
+              <Input placeholder="请输入关系类型" />
+            </Form.Item>
           
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="sourceEntity"
-                label="源实体"
-                rules={[{ required: true, message: '请输入源实体' }]}
+                name="source_entity_id"
+                label="源实体ID"
+                rules={[{ required: true, message: '请输入源实体ID' }]}
               >
-                <Input placeholder="请输入源实体" />
+                <Input placeholder="请输入源实体ID" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
-                name="targetEntity"
-                label="目标实体"
-                rules={[{ required: true, message: '请输入目标实体' }]}
+                name="target_entity_id"
+                label="目标实体ID"
+                rules={[{ required: true, message: '请输入目标实体ID' }]}
               >
-                <Input placeholder="请输入目标实体" />
+                <Input placeholder="请输入目标实体ID" />
               </Form.Item>
             </Col>
           </Row>
@@ -642,9 +541,9 @@ const RelationManager: React.FC = () => {
                 rules={[{ required: true, message: '请选择所属图谱' }]}
               >
                 <Select placeholder="请选择所属图谱">
-                  <Option value="1">AI技术图谱</Option>
-                  <Option value="2">医学文献图谱</Option>
-                  <Option value="3">法律条文图谱</Option>
+                  {graphs.map(graph => (
+                    <Option key={graph.id} value={graph.id}>{graph.name}</Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -667,11 +566,8 @@ const RelationManager: React.FC = () => {
         {viewingRelation && (
           <div>
             <Descriptions column={2} bordered>
-              <Descriptions.Item label="关系名称" span={2}>
-                <Text strong style={{ fontSize: '16px' }}>{viewingRelation.name}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="关系类型">
-                <Tag color={getTypeColor(viewingRelation.type)}>{viewingRelation.type}</Tag>
+              <Descriptions.Item label="关系类型" span={2}>
+                <Tag color={getTypeColor(viewingRelation.relation_type)}>{viewingRelation.relation_type}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="置信度">
                 <span style={{ color: getConfidenceColor(viewingRelation.confidence), fontWeight: 'bold' }}>
@@ -679,19 +575,13 @@ const RelationManager: React.FC = () => {
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label="源实体">
-                <Text strong>{viewingRelation.sourceEntity}</Text>
+                <Text strong>{viewingRelation.source_entity_name || viewingRelation.source_entity_id}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="目标实体">
-                <Text strong>{viewingRelation.targetEntity}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="频次">
-                <Badge 
-                  count={viewingRelation.frequency} 
-                  style={{ backgroundColor: viewingRelation.frequency > 100 ? '#52c41a' : '#1890ff' }}
-                />
+                <Text strong>{viewingRelation.target_entity_name || viewingRelation.target_entity_id}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="所属图谱">
-                {viewingRelation.graphName}
+                {graphs.find(g => g.id === viewingRelation.graph_id)?.name || viewingRelation.graph_id}
               </Descriptions.Item>
               {viewingRelation.description && (
                 <Descriptions.Item label="描述" span={2}>
@@ -699,49 +589,38 @@ const RelationManager: React.FC = () => {
                 </Descriptions.Item>
               )}
               <Descriptions.Item label="创建时间">
-                {viewingRelation.createdAt}
+                {viewingRelation.created_at}
               </Descriptions.Item>
               <Descriptions.Item label="更新时间">
-                {viewingRelation.updatedAt}
+                {viewingRelation.updated_at}
               </Descriptions.Item>
             </Descriptions>
             
-            {viewingRelation.properties && Object.keys(viewingRelation.properties).length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <Title level={5}>扩展属性</Title>
-                <Descriptions column={1} size="small" bordered>
-                  {Object.entries(viewingRelation.properties).map(([key, value]) => (
-                    <Descriptions.Item key={key} label={key}>
-                      {Array.isArray(value) ? value.join(', ') : String(value)}
-                    </Descriptions.Item>
-                  ))}
-                </Descriptions>
-              </div>
-            )}
+
             
             <Divider />
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
               <Space size="large" align="center">
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
-                    {viewingRelation.sourceEntity}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>源实体</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
+                  {viewingRelation.source_entity_name || viewingRelation.source_entity_id}
                 </div>
-                <ArrowRightOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#722ed1' }}>
-                    {viewingRelation.name}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>关系</div>
+                <div style={{ fontSize: '12px', color: '#666' }}>源实体</div>
+              </div>
+              <ArrowRightOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#722ed1' }}>
+                  {viewingRelation.relation_type}
                 </div>
-                <ArrowRightOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
-                    {viewingRelation.targetEntity}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>目标实体</div>
+                <div style={{ fontSize: '12px', color: '#666' }}>关系</div>
+              </div>
+              <ArrowRightOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
+                  {viewingRelation.target_entity_name || viewingRelation.target_entity_id}
                 </div>
+                <div style={{ fontSize: '12px', color: '#666' }}>目标实体</div>
+              </div>
               </Space>
             </div>
           </div>
