@@ -399,12 +399,23 @@ class DataManager:
     def create_entity(self, name: str, entity_type: str, description: str = "", graph_id: str = "") -> Dict[str, Any]:
         """创建新实体"""
         entity_id = str(uuid.uuid4())
+        
+        # 获取图谱的分类路径
+        category_path = "/root"
+        if graph_id:
+            graph = self.get_graph(graph_id)
+            if graph and graph.get("category_id"):
+                category = self.get_category(graph["category_id"])
+                if category:
+                    category_path = category.get("path", "/root")
+        
         entity_data = {
             "id": entity_id,
             "name": name,
             "type": entity_type,
             "description": description,
             "graph_id": graph_id,
+            "category_path": category_path,  # 添加分类路径属性
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "frequency": 1,
@@ -580,20 +591,35 @@ class DataManager:
             raise e
     
     def get_category_visualization_data(self, category_id: str) -> Optional[Dict[str, Any]]:
-        """获取分类的合并可视化数据"""
+        """获取分类的可视化数据（基于实体路径筛选）"""
         try:
-            graphs = self.get_graphs_by_category(category_id)
-            if not graphs:
+            # 获取当前分类信息
+            current_category = self.get_category(category_id)
+            if not current_category:
                 return None
             
-            # 如果只有一个图谱，直接返回该图谱的可视化数据
-            if len(graphs) == 1:
-                return self.get_graph_visualization_data(graphs[0]['id'])
+            current_path = current_category.get("path", "/root")
             
-            # 合并多个图谱的数据
-            all_nodes = []
-            all_edges = []
-            all_graph_info = []
+            # 获取所有实体，根据路径筛选
+            all_entities = self.get_entities()
+            filtered_entities = []
+            
+            for entity in all_entities:
+                entity_path = entity.get("category_path", "/root")
+                # 检查实体路径是否匹配当前分类路径
+                if entity_path.startswith(current_path):
+                    filtered_entities.append(entity)
+            
+            if not filtered_entities:
+                return None
+            
+            # 获取相关的关系（只包含筛选后实体之间的关系）
+            entity_ids = {entity["id"] for entity in filtered_entities}
+            all_relations = self.get_relations()
+            filtered_relations = [
+                relation for relation in all_relations
+                if relation["source_entity_id"] in entity_ids and relation["target_entity_id"] in entity_ids
+            ]
             
             # 实体类型颜色映射
             type_colors = {
@@ -610,62 +636,88 @@ class DataManager:
                 "检测方法": "#F8C471"
             }
             
-            for graph in graphs:
-                graph_id = graph['id']
-                entities = self.get_entities(graph_id)
-                relations = self.get_relations(graph_id)
-                all_graph_info.append(graph)
-                
-                # 构建节点
-                for entity in entities:
+            # 构建节点
+            nodes = []
+            entity_name_count = {}  # 统计同名实体数量
+            
+            # 先统计同名实体
+            for entity in filtered_entities:
+                name = entity["name"]
+                entity_name_count[name] = entity_name_count.get(name, 0) + 1
+            
+            # 去重：对于同名实体，只保留一个，但合并其属性
+            unique_entities = {}
+            for entity in filtered_entities:
+                name = entity["name"]
+                if name not in unique_entities:
+                    # 获取图谱信息
+                    graph = self.get_graph(entity["graph_id"]) if entity.get("graph_id") else None
+                    graph_name = graph["name"] if graph else "未知图谱"
+                    
                     entity_type = entity.get("type") or entity.get("entity_type", "未知")
                     entity_desc = entity.get("description", "无描述")
                     color = type_colors.get(entity_type, "#BDC3C7")
-                    all_nodes.append({
+                    
+                    unique_entities[name] = {
                         "id": entity["id"],
-                        "label": entity["name"],
-                        "title": f"类型: {entity_type}\n描述: {entity_desc}\n来源图谱: {graph['name']}",
+                        "label": name,
+                        "title": f"类型: {entity_type}\n描述: {entity_desc}\n路径: {entity.get('category_path', '/root')}\n来源图谱: {graph_name}\n出现次数: {entity_name_count[name]}",
                         "color": color,
-                        "size": min(20 + entity.get("frequency", 1) * 5, 50),
+                        "size": min(20 + entity.get("frequency", 1) * 5 + entity_name_count[name] * 3, 60),
                         "font": {"size": 14},
                         "type": entity_type,
-                        "graph_id": graph_id,
-                        "graph_name": graph['name']
-                    })
+                        "category_path": entity.get("category_path", "/root"),
+                        "occurrence_count": entity_name_count[name],
+                        "source_graphs": [graph_name]
+                    }
+                else:
+                    # 合并来源图谱信息
+                    graph = self.get_graph(entity["graph_id"]) if entity.get("graph_id") else None
+                    graph_name = graph["name"] if graph else "未知图谱"
+                    if graph_name not in unique_entities[name]["source_graphs"]:
+                        unique_entities[name]["source_graphs"].append(graph_name)
+            
+            nodes = list(unique_entities.values())
+            
+            # 构建边（需要更新实体ID映射）
+            entity_id_mapping = {entity["id"]: unique_entities[entity["name"]]["id"] for entity in filtered_entities if entity["name"] in unique_entities}
+            
+            edges = []
+            for relation in filtered_relations:
+                source_id = entity_id_mapping.get(relation["source_entity_id"])
+                target_id = entity_id_mapping.get(relation["target_entity_id"])
                 
-                # 构建边
-                for relation in relations:
+                if source_id and target_id and source_id != target_id:  # 避免自环
                     relation_desc = relation.get("description", "无描述")
-                    all_edges.append({
+                    edges.append({
                         "id": relation["id"],
-                        "from": relation["source_entity_id"],
-                        "to": relation["target_entity_id"],
+                        "from": source_id,
+                        "to": target_id,
                         "label": relation["relation_type"],
-                        "title": f"关系: {relation['relation_type']}\n置信度: {relation['confidence']}\n描述: {relation_desc}\n来源图谱: {graph['name']}",
+                        "title": f"关系: {relation['relation_type']}\n置信度: {relation['confidence']}\n描述: {relation_desc}",
                         "width": max(1, relation["confidence"] * 3),
                         "arrows": "to",
                         "color": {"color": "#848484", "highlight": "#FF6B6B"},
-                        "font": {"size": 12},
-                        "graph_id": graph_id,
-                        "graph_name": graph['name']
+                        "font": {"size": 12}
                     })
             
-            # 创建合并后的图谱信息
-            merged_graph_info = {
-                "id": f"merged_{category_id}",
-                "name": f"合并视图 - {self.get_category(category_id)['name'] if self.get_category(category_id) else '根分类'}",
-                "description": f"包含 {len(graphs)} 个图谱的合并视图",
+            # 创建分类视图信息
+            category_info = {
+                "id": f"category_{category_id}",
+                "name": f"分类视图 - {current_category['name']}",
+                "description": f"路径: {current_path}，包含 {len(nodes)} 个去重实体",
                 "category_id": category_id,
-                "merged_graphs": [g['name'] for g in graphs],
+                "category_path": current_path,
                 "created_at": datetime.now().isoformat(),
-                "is_merged": True
+                "is_category_view": True,
+                "entity_count": len(nodes),
+                "relation_count": len(edges)
             }
             
             return {
-                "nodes": all_nodes,
-                "edges": all_edges,
-                "graph_info": merged_graph_info,
-                "source_graphs": all_graph_info
+                "nodes": nodes,
+                "edges": edges,
+                "graph_info": category_info
             }
             
         except Exception as e:
