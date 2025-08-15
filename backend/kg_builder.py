@@ -150,6 +150,9 @@ class KnowledgeGraphBuilder:
         graph_id = target_graph_id
         
         try:
+            # 记录整个流程的开始时间
+            total_start_time = datetime.now()
+            
             print(f"🚀 开始处理文档: {filename}")
             print(f"📁 文件路径: {file_path}")
             print(f"🔧 构建模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'}")
@@ -219,6 +222,14 @@ class KnowledgeGraphBuilder:
             # 恢复原始配置路径
             self._restore_config_paths()
             
+            # 计算整个流程的总处理时间
+            total_end_time = datetime.now()
+            total_processing_time = (total_end_time - total_start_time).total_seconds()
+            print(f"⏱️ 时间计算调试信息:")
+            print(f"   开始时间: {total_start_time}")
+            print(f"   结束时间: {total_end_time}")
+            print(f"   总处理时间: {total_processing_time:.2f}秒")
+            
             # 使用正确的图谱ID（独立构建模式使用新创建的图谱ID）
             final_graph_id = graph_id if build_mode == "standalone" else kg_result["graph_id"]
             
@@ -229,7 +240,7 @@ class KnowledgeGraphBuilder:
                     "entities_count": kg_result["entities_count"],
                     "relations_count": kg_result["relations_count"],
                     "chunks_processed": chunk_result.get("chunks_count", 0),
-                    "processing_time": f"{kg_result['processing_time']:.2f}秒"
+                    "processing_time": f"{total_processing_time:.2f}秒"
                 },
                 "message": "知识图谱构建成功",
                 "details": {

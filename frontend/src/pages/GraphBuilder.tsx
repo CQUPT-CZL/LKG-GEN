@@ -204,10 +204,10 @@ const GraphBuilder: React.FC = () => {
               message.success('知识图谱构建完成！');
               setCurrentStep(2);
               setBuildResult({
-                entities: status.result?.entities || 0,
-                relations: status.result?.relations || 0,
+                entities: status.result?.statistics?.entities_count || 0,
+                relations: status.result?.statistics?.relations_count || 0,
                 documents: uploadedFiles.length,
-                processingTime: status.result?.processingTime || '未知'
+                processingTime: status.result?.statistics?.processing_time || '未知'
               });
             } else {
               // 标记当前进行中的步骤为错误状态
