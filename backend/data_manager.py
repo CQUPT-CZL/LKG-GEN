@@ -218,9 +218,33 @@ class DataManager:
         for child_id in category.get("children_ids", []):
             self.delete_category(child_id)
         
-        # 删除分类下的所有图谱
+        # 删除分类下的所有图谱（不删除对应分类，避免循环调用）
         for graph_id in category.get("graph_ids", []):
-            self.delete_graph(graph_id)
+            self.delete_graph(graph_id, delete_category=False)
+        
+        # 从父分类中移除
+        if category["parent_id"]:
+            parent_category = self.get_category(category["parent_id"])
+            if parent_category and category_id in parent_category.get("children_ids", []):
+                parent_category["children_ids"].remove(category_id)
+                parent_category["updated_at"] = datetime.now().isoformat()
+                self.save_category(category["parent_id"], parent_category)
+        
+        # 删除分类文件
+        file_path = self.categories_dir / f"{category_id}.json"
+        if file_path.exists():
+            file_path.unlink()
+        
+        return True
+    
+    def _delete_category_only(self, category_id: str) -> bool:
+        """仅删除分类本身，不递归删除子分类和图谱（用于避免循环调用）"""
+        if category_id == "root":
+            return False
+        
+        category = self.get_category(category_id)
+        if not category:
+            return False
         
         # 从父分类中移除
         if category["parent_id"]:
@@ -362,8 +386,13 @@ class DataManager:
         
         return None
     
-    def delete_graph(self, graph_id: str) -> bool:
-        """删除知识图谱及其相关数据"""
+    def delete_graph(self, graph_id: str, delete_category: bool = True) -> bool:
+        """删除知识图谱及其相关数据
+        
+        Args:
+            graph_id: 图谱ID
+            delete_category: 是否同时删除对应的分类（默认True）
+        """
         file_path = self.graphs_dir / f"{graph_id}.json"
         
         if file_path.exists():
@@ -377,6 +406,13 @@ class DataManager:
                 category["graph_ids"].remove(graph_id)
                 category["updated_at"] = datetime.now().isoformat()
                 self.save_category(category_id, category)
+                
+                # 如果分类下没有其他图谱且不是根分类，则删除该分类
+                if (delete_category and 
+                    category_id != "root" and 
+                    len(category.get("graph_ids", [])) == 0 and 
+                    len(category.get("children_ids", [])) == 0):
+                    self._delete_category_only(category_id)
             
             # 删除图谱文件
             file_path.unlink()
@@ -760,51 +796,89 @@ class DataManager:
         imported_relations = []
         entity_id_mapping = {}  # 原始ID到新ID的映射
         
+        print(f"🔄 DataManager: 开始导入数据到图谱 {graph_id}")
+        print(f"📊 DataManager: 待导入实体数量: {len(entities_data)}")
+        print(f"📊 DataManager: 待导入关系数量: {len(relations_data)}")
+        
         try:
             # 导入实体
-            for entity_data in entities_data:
-                new_entity = self.create_entity(
-                    name=entity_data["name"],
-                    entity_type=entity_data["type"],
-                    description=entity_data.get("description", ""),
-                    graph_id=graph_id
-                )
-                imported_entities.append(new_entity)
-                
-                # 记录ID映射（如果原始数据有ID）
-                if "id" in entity_data:
-                    entity_id_mapping[entity_data["id"]] = new_entity["id"]
-                # 也可以通过名称映射
-                entity_id_mapping[entity_data["name"]] = new_entity["id"]
-            
-            # 导入关系
-            for relation_data in relations_data:
-                # 查找对应的实体ID
-                source_id = None
-                target_id = None
-                
-                # 尝试通过不同方式找到实体ID
-                if "source_entity_id" in relation_data:
-                    source_id = entity_id_mapping.get(relation_data["source_entity_id"])
-                if "target_entity_id" in relation_data:
-                    target_id = entity_id_mapping.get(relation_data["target_entity_id"])
-                
-                # 如果通过ID找不到，尝试通过名称查找
-                if not source_id and "source_entity" in relation_data:
-                    source_id = entity_id_mapping.get(relation_data["source_entity"])
-                if not target_id and "target_entity" in relation_data:
-                    target_id = entity_id_mapping.get(relation_data["target_entity"])
-                
-                if source_id and target_id:
-                    new_relation = self.create_relation(
-                        source_entity_id=source_id,
-                        target_entity_id=target_id,
-                        relation_type=relation_data["relation_type"],
-                        confidence=relation_data.get("confidence", 1.0),
-                        description=relation_data.get("description", ""),
+            print(f"🔄 DataManager: 开始导入实体...")
+            for i, entity_data in enumerate(entities_data):
+                try:
+                    new_entity = self.create_entity(
+                        name=entity_data["name"],
+                        entity_type=entity_data["type"],
+                        description=entity_data.get("description", ""),
                         graph_id=graph_id
                     )
-                    imported_relations.append(new_relation)
+                    imported_entities.append(new_entity)
+                    
+                    # 记录ID映射（如果原始数据有ID）
+                    if "id" in entity_data:
+                        entity_id_mapping[entity_data["id"]] = new_entity["id"]
+                    # 也可以通过名称映射
+                    entity_id_mapping[entity_data["name"]] = new_entity["id"]
+                    
+                    if (i + 1) % 10 == 0 or i == 0:
+                        print(f"📝 DataManager: 已导入实体 {i + 1}/{len(entities_data)}")
+                        
+                except Exception as e:
+                    print(f"❌ DataManager: 导入实体失败 {entity_data.get('name', 'Unknown')}: {e}")
+                    continue
+            
+            print(f"✅ DataManager: 实体导入完成，成功导入 {len(imported_entities)} 个实体")
+            
+            # 导入关系
+            print(f"🔄 DataManager: 开始导入关系...")
+            for i, relation_data in enumerate(relations_data):
+                try:
+                    # 查找对应的实体ID
+                    source_id = None
+                    target_id = None
+                    source_name = relation_data.get("source_entity", "Unknown")
+                    target_name = relation_data.get("target_entity", "Unknown")
+                    
+                    # 尝试通过不同方式找到实体ID
+                    if "source_entity_id" in relation_data:
+                        source_id = entity_id_mapping.get(relation_data["source_entity_id"])
+                        if not source_id:
+                            print(f"⚠️ DataManager: 无法通过ID找到源实体: {relation_data['source_entity_id']}")
+                    if "target_entity_id" in relation_data:
+                        target_id = entity_id_mapping.get(relation_data["target_entity_id"])
+                        if not target_id:
+                            print(f"⚠️ DataManager: 无法通过ID找到目标实体: {relation_data['target_entity_id']}")
+                    
+                    # 如果通过ID找不到，尝试通过名称查找
+                    if not source_id and "source_entity" in relation_data:
+                        source_id = entity_id_mapping.get(relation_data["source_entity"])
+                        if not source_id:
+                            print(f"⚠️ DataManager: 无法通过名称找到源实体: {source_name}")
+                    if not target_id and "target_entity" in relation_data:
+                        target_id = entity_id_mapping.get(relation_data["target_entity"])
+                        if not target_id:
+                            print(f"⚠️ DataManager: 无法通过名称找到目标实体: {target_name}")
+                    
+                    if source_id and target_id:
+                        new_relation = self.create_relation(
+                            source_entity_id=source_id,
+                            target_entity_id=target_id,
+                            relation_type=relation_data["relation_type"],
+                            confidence=relation_data.get("confidence", 1.0),
+                            description=relation_data.get("description", ""),
+                            graph_id=graph_id
+                        )
+                        imported_relations.append(new_relation)
+                    else:
+                        print(f"❌ DataManager: 无法创建关系，缺少源实体ID或目标实体ID: {source_name} -> {target_name}")
+                    
+                    if (i + 1) % 10 == 0 or i == 0:
+                        print(f"📝 DataManager: 已处理关系 {i + 1}/{len(relations_data)}")
+                        
+                except Exception as e:
+                    print(f"❌ DataManager: 导入关系失败: {e}")
+                    continue
+                    
+            print(f"✅ DataManager: 关系导入完成，成功导入 {len(imported_relations)} 个关系")
             
             return {
                 "success": True,

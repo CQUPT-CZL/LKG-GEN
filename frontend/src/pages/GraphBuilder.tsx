@@ -58,7 +58,6 @@ const GraphBuilder: React.FC = () => {
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
-  const [buildMode, setBuildMode] = useState<'standalone' | 'append'>('standalone');
   const [availableGraphs, setAvailableGraphs] = useState<any[]>([]);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [categoryTree, setCategoryTree] = useState<Category | null>(null);
@@ -181,6 +180,35 @@ const GraphBuilder: React.FC = () => {
     return [buildNode(category)];
   };
 
+  // 处理分类选择变化
+  const handleCategoryChange = (categoryId: string | null) => {
+    setSelectedCategoryId(categoryId);
+    // 当分类改变时，重新加载该分类下的图谱
+    if (categoryId) {
+      loadAvailableGraphs(categoryId);
+    } else {
+      loadAvailableGraphs();
+    }
+  };
+
+  // 加载图谱列表函数
+  const loadAvailableGraphs = async (categoryId?: string) => {
+    try {
+      let graphs;
+      if (categoryId && categoryId !== 'root') {
+        // 如果选择了具体分类，只加载该分类下的图谱
+        graphs = await apiService.getCategoryGraphs(categoryId);
+      } else {
+        // 如果是根分类或未选择，加载所有图谱
+        graphs = await apiService.getGraphs();
+      }
+      setAvailableGraphs(graphs);
+    } catch (error) {
+      console.error('加载图谱列表失败:', error);
+      message.error('加载图谱列表失败');
+    }
+  };
+
   // 加载可用图谱列表和分类树
   useEffect(() => {
     const loadData = async () => {
@@ -284,20 +312,9 @@ const GraphBuilder: React.FC = () => {
       return;
     }
 
-    // 验证附加模式下是否选择了目标图谱
-    if (buildMode === 'append' && !selectedGraphId) {
-      message.warning('附加模式下请选择目标图谱！');
+    if (!selectedGraphId) {
+      message.warning('请选择目标图谱！');
       return;
-    }
-
-    // 验证独立构建模式下的图谱名称
-    if (buildMode === 'standalone') {
-      try {
-        await form.validateFields(['graphName']);
-      } catch (error) {
-        message.warning('请填写图谱名称！');
-        return;
-      }
     }
 
     try {
@@ -306,31 +323,12 @@ const GraphBuilder: React.FC = () => {
 
       // 上传文档并开始构建
       let lastTaskId = null;
-      const formValues = form.getFieldsValue();
       
       for (const file of uploadedFiles) {
         const formData = new FormData();
         formData.append('file', file.originFileObj);
-        formData.append('build_mode', buildMode);
-        if (buildMode === 'append' && selectedGraphId) {
-          formData.append('target_graph_id', selectedGraphId);
-        }
-        
-        // 独立构建模式下添加图谱信息
-        if (buildMode === 'standalone') {
-          if (formValues.graphName) {
-            formData.append('graph_name', formValues.graphName);
-          }
-          if (formValues.description) {
-            formData.append('graph_description', formValues.description);
-          }
-          if (formValues.domain) {
-            formData.append('domain', formValues.domain);
-          }
-          if (formValues.categoryId) {
-            formData.append('category_id', formValues.categoryId);
-          }
-        }
+        formData.append('build_mode', 'append');
+        formData.append('target_graph_id', selectedGraphId);
         
         const result = await fetch('/api/documents/upload', {
           method: 'POST',
@@ -344,8 +342,7 @@ const GraphBuilder: React.FC = () => {
         setTaskId(lastTaskId);
       }
       
-      const modeText = buildMode === 'standalone' ? '独立构建' : '附加到现有图谱';
-      message.success(`开始构建知识图谱 (${modeText})`);
+      message.success('开始附加文档到知识图谱');
     } catch (error: any) {
       console.error('构建失败:', error);
       console.error('错误详情:', error.response?.data || error.message);
@@ -436,9 +433,9 @@ const GraphBuilder: React.FC = () => {
   return (
     <div>
       <div className="page-header">
-        <Title level={2} className="page-title">🏗️ 知识图谱构建</Title>
+        <Title level={2} className="page-title">📎 文档附加到图谱</Title>
         <Paragraph className="page-description">
-          上传文档，自动提取实体和关系，构建知识图谱。支持所有文件格式。
+          上传文档，自动提取实体和关系，附加到现有知识图谱中。每个一级分类对应一个独立的知识图谱。
         </Paragraph>
       </div>
 
@@ -476,98 +473,44 @@ const GraphBuilder: React.FC = () => {
                 />
                 <Divider />
                 <Form form={form} layout="vertical" style={{ marginBottom: 16 }}>
-                  <Form.Item label="构建模式">
-                    <Radio.Group 
-                      value={buildMode} 
-                      onChange={(e) => {
-                        setBuildMode(e.target.value);
-                        if (e.target.value === 'standalone') {
-                          setSelectedGraphId(null);
-                        }
-                      }}
-                    >
-                      <Radio value="standalone">🆕 独立构建新图谱</Radio>
-                      <Radio value="append">📎 附加到现有图谱</Radio>
-                    </Radio.Group>
-                  </Form.Item>
-                  
-                  {buildMode === 'append' && (
-                    <Form.Item 
-                      label="选择目标图谱"
-                      rules={[{ required: buildMode === 'append', message: '请选择目标图谱' }]}
-                    >
-                      <Select 
-                        value={selectedGraphId}
-                        onChange={setSelectedGraphId}
-                        placeholder="选择要附加到的图谱"
-                        allowClear
-                      >
-                        {availableGraphs.map(graph => (
-                          <Option key={graph.id} value={graph.id}>
-                            {graph.name} ({graph.entities_count || 0} 实体, {graph.relations_count || 0} 关系)
-                          </Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  )}
-                  
-                  {buildMode === 'standalone' && (
-                    <>
-                      <Row gutter={16}>
-                        <Col span={12}>
-                          <Form.Item
-                            name="graphName"
-                            label="图谱名称"
-                            rules={[{ required: true, message: '请输入图谱名称' }]}
-                          >
-                            <Input placeholder="请输入知识图谱名称" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                          <Form.Item name="domain" label="领域">
-                            <Select placeholder="选择领域" allowClear>
-                              <Option value="general">通用</Option>
-                              <Option value="medical">钢铁</Option>
-                              <Option value="finance">冶金</Option>
-                              <Option value="education">教育</Option>
-                              <Option value="technology">科技</Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                      </Row>
-                      <Form.Item name="description" label="描述">
-                         <Input.TextArea rows={3} placeholder="请输入图谱描述（可选）" />
-                       </Form.Item>
-                       <Form.Item name="categoryId" label="分类目录">
-                         <TreeSelect
-                           placeholder="选择分类目录（可选）"
-                           allowClear
-                           treeData={buildCategoryTreeData(categoryTree)}
-                           onChange={setSelectedCategoryId}
-                           showSearch
-                           treeDefaultExpandAll
-                         />
-                       </Form.Item>
-                     </>
-                   )}
-                </Form>
+                   <Form.Item label="选择分类目录">
+                     <TreeSelect
+                       placeholder="选择分类目录来过滤图谱"
+                       allowClear
+                       value={selectedCategoryId}
+                       treeData={buildCategoryTreeData(categoryTree)}
+                       onChange={handleCategoryChange}
+                       showSearch
+                       treeDefaultExpandAll
+                     />
+                   </Form.Item>
+                   
+                   <Form.Item 
+                     label="选择目标图谱"
+                     rules={[{ required: true, message: '请选择目标图谱' }]}
+                   >
+                     <Select 
+                       value={selectedGraphId}
+                       onChange={setSelectedGraphId}
+                       placeholder="选择要附加到的图谱"
+                       allowClear
+                       notFoundContent={availableGraphs.length === 0 ? "该分类下暂无图谱，请先在分类管理中创建" : "暂无数据"}
+                     >
+                       {availableGraphs.map(graph => (
+                         <Option key={graph.id} value={graph.id}>
+                           {graph.name} ({graph.entity_count || 0} 实体, {graph.relation_count || 0} 关系)
+                         </Option>
+                       ))}
+                     </Select>
+                   </Form.Item>
+                 </Form>
                 <Space>
                   <Button 
                     type="primary" 
                     size="large" 
-                    onClick={async () => {
-                      if (buildMode === 'standalone') {
-                        try {
-                          await form.validateFields(['graphName']);
-                        } catch (error) {
-                          message.warning('请填写必要的图谱信息！');
-                          return;
-                        }
-                      }
-                      startProcessing();
-                    }}
+                    onClick={startProcessing}
                   >
-                    🚀 开始构建知识图谱
+                    🚀 附加文档到图谱
                   </Button>
                   <Button onClick={resetProcess}>重置</Button>
                 </Space>

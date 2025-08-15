@@ -166,7 +166,7 @@ export const apiService = {
   // 图谱管理
   getGraphs: (): Promise<Graph[]> => api.get('/graphs'),
   getGraph: (id: string): Promise<Graph> => api.get(`/graphs/${id}`),
-  createGraph: (data: { name: string; description?: string; category_id?: string }): Promise<Graph> => 
+  createGraph: (data: { name: string; description?: string; domain?: string; category_id?: string }): Promise<Graph> => 
     api.post('/graphs', data),
   updateGraph: (id: string, data: { name: string; description?: string }): Promise<Graph> => 
     api.put(`/graphs/${id}`, data),

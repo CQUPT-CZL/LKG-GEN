@@ -46,9 +46,11 @@ const CategoryManager: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryGraphs, setCategoryGraphs] = useState<Graph[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isGraphModalVisible, setIsGraphModalVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(true);
   const [form] = Form.useForm();
+  const [graphForm] = Form.useForm();
 
   useEffect(() => {
     loadCategoryTree();
@@ -92,14 +94,18 @@ const CategoryManager: React.FC = () => {
             <Tag color="blue">{category.graph_ids?.length || 0}</Tag>
           </Space>
           <Space size="small">
-            <Tooltip title="添加子分类">
+            <Tooltip title={category.level === 0 ? "添加图谱" : "添加子分类"}>
               <Button
                 type="text"
                 size="small"
                 icon={<PlusOutlined />}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleAddCategory(category.id);
+                  if (category.level === 0) {
+                    handleAddGraph();
+                  } else {
+                    handleAddCategory(category.id);
+                  }
                 }}
               />
             </Tooltip>
@@ -173,6 +179,11 @@ const CategoryManager: React.FC = () => {
     setIsModalVisible(true);
   };
 
+  const handleAddGraph = () => {
+    graphForm.resetFields();
+    setIsGraphModalVisible(true);
+  };
+
   const handleEditCategory = (category: Category) => {
     setEditingCategory(category);
     form.setFieldsValue({
@@ -206,12 +217,34 @@ const CategoryManager: React.FC = () => {
         message.success('分类更新成功');
       } else {
         // 创建分类
-        await apiService.createCategory({
+        const newCategory = await apiService.createCategory({
           name: values.name,
           description: values.description,
           parent_id: values.parent_id
         });
-        message.success('分类创建成功');
+        
+        // 如果是创建一级分类（父分类是root），同时创建对应的知识图谱
+        if (values.parent_id === 'root') {
+          try {
+            const graphName = values.graphName || `${values.name}知识图谱`;
+            const graphDescription = values.graphDescription || `基于${values.name}分类的知识图谱`;
+            const graphDomain = values.graphDomain || (values.name.includes('钢铁') || values.name.includes('冶金') ? 'steel' : 'general');
+            
+            await apiService.createGraph({
+              name: graphName,
+              description: graphDescription,
+              domain: graphDomain,
+              category_id: newCategory.id
+            });
+            
+            message.success('分类和对应知识图谱创建成功');
+          } catch (graphError) {
+            console.error('创建知识图谱失败:', graphError);
+            message.warning('分类创建成功，但知识图谱创建失败');
+          }
+        } else {
+          message.success('分类创建成功');
+        }
       }
       
       setIsModalVisible(false);
@@ -226,6 +259,30 @@ const CategoryManager: React.FC = () => {
     setIsModalVisible(false);
     setEditingCategory(null);
     form.resetFields();
+  };
+
+  const handleGraphModalOk = async () => {
+    try {
+      const values = await graphForm.validateFields();
+      const graphData = {
+        name: values.name,
+        description: values.description || '',
+        domain: values.domain || '通用'
+      };
+      await apiService.createGraph(graphData);
+      message.success('图谱创建成功');
+      setIsGraphModalVisible(false);
+      graphForm.resetFields();
+      loadCategoryTree();
+    } catch (error) {
+      console.error('创建图谱失败:', error);
+      message.error('创建图谱失败');
+    }
+  };
+
+  const handleGraphModalCancel = () => {
+    setIsGraphModalVisible(false);
+    graphForm.resetFields();
   };
 
   const getParentOptions = (tree: Category, currentId?: string): { label: string; value: string }[] => {
@@ -270,9 +327,9 @@ const CategoryManager: React.FC = () => {
               <Button 
                 type="primary" 
                 icon={<PlusOutlined />}
-                onClick={() => handleAddCategory('root')}
+                onClick={handleAddGraph}
               >
-                添加分类
+                添加图谱
               </Button>
             }
           >
@@ -373,7 +430,13 @@ const CategoryManager: React.FC = () => {
               label="父分类"
               rules={[{ required: true, message: '请选择父分类' }]}
             >
-              <Select placeholder="选择父分类">
+              <Select 
+                placeholder="选择父分类"
+                onChange={(value) => {
+                  // 当选择父分类时，如果是root，显示图谱相关字段
+                  form.setFieldsValue({ parent_id: value });
+                }}
+              >
                 {categoryTree && getParentOptions(categoryTree).map(option => (
                   <Option key={option.value} value={option.value}>
                     {option.label}
@@ -400,6 +463,108 @@ const CategoryManager: React.FC = () => {
               placeholder="请输入分类描述（可选）" 
             />
           </Form.Item>
+          
+          {/* 一级分类时显示图谱配置 */}
+          <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => 
+            prevValues.parent_id !== currentValues.parent_id
+          }>
+            {({ getFieldValue }) => {
+              const parentId = getFieldValue('parent_id');
+              return parentId === 'root' && !editingCategory ? (
+                <>
+                  <div style={{ 
+                    background: '#f6ffed', 
+                    border: '1px solid #b7eb8f', 
+                    borderRadius: '6px', 
+                    padding: '12px', 
+                    marginBottom: '16px' 
+                  }}>
+                    <Text strong style={{ color: '#52c41a' }}>🎯 一级分类将自动创建对应的知识图谱</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      该分类下的所有文档都将归属到这个知识图谱中
+                    </Text>
+                  </div>
+                  
+                  <Form.Item
+                    name="graphName"
+                    label="知识图谱名称"
+                  >
+                    <Input placeholder="留空将自动生成（分类名+知识图谱）" />
+                  </Form.Item>
+                  
+                  <Form.Item
+                    name="graphDescription"
+                    label="知识图谱描述"
+                  >
+                    <TextArea 
+                      rows={2} 
+                      placeholder="留空将自动生成" 
+                    />
+                  </Form.Item>
+                  
+                  <Form.Item
+                    name="graphDomain"
+                    label="知识领域"
+                  >
+                    <Select placeholder="留空将自动判断">
+                      <Option value="general">通用领域</Option>
+                      <Option value="steel">钢铁冶金</Option>
+                      <Option value="medical">医疗健康</Option>
+                      <Option value="finance">金融财经</Option>
+                      <Option value="technology">科技互联网</Option>
+                      <Option value="education">教育培训</Option>
+                    </Select>
+                  </Form.Item>
+                </>
+              ) : null;
+            }}
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 创建图谱模态框 */}
+      <Modal
+        title="创建图谱"
+        open={isGraphModalVisible}
+        onOk={handleGraphModalOk}
+        onCancel={handleGraphModalCancel}
+        okText="确定"
+        cancelText="取消"
+      >
+        <Form form={graphForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="图谱名称"
+            rules={[{ required: true, message: '请输入图谱名称' }]}
+          >
+            <Input placeholder="请输入图谱名称" />
+          </Form.Item>
+          
+          <Form.Item
+            name="description"
+            label="图谱描述"
+          >
+            <TextArea 
+              rows={3} 
+              placeholder="请输入图谱描述（可选）" 
+            />
+          </Form.Item>
+          
+          <Form.Item
+            name="domain"
+            label="领域"
+          >
+            <Select placeholder="选择图谱领域">
+              <Option value="通用">通用</Option>
+              <Option value="钢铁">钢铁</Option>
+              <Option value="冶金">冶金</Option>
+              <Option value="教育">教育</Option>
+              <Option value="科技">科技</Option>
+            </Select>
+          </Form.Item>
+          
+
         </Form>
       </Modal>
     </div>

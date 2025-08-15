@@ -126,24 +126,16 @@ class KnowledgeGraphBuilder:
             config.RE_OUTPUT_DIR = self.original_paths["RE_OUTPUT_DIR"]
     
     async def process_document(self, file_path: str, filename: str, 
-                             build_mode: str = "standalone",
-                             target_graph_id: Optional[str] = None,
-                             graph_name: Optional[str] = None,
-                             graph_description: Optional[str] = None,
-                             domain: Optional[str] = None,
-                             category_id: Optional[str] = None,
+                             build_mode: str = "append",
+                             target_graph_id: str = None,
                              progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
-        """处理文档并构建知识图谱
+        """处理文档并附加到现有知识图谱
         
         Args:
             file_path: 文档文件路径
             filename: 文档文件名
-            build_mode: 构建模式，'standalone'(独立构建) 或 'append'(附加到现有图谱)
-            target_graph_id: 当build_mode为'append'时的目标图谱ID
-            graph_name: 图谱名称（独立构建模式时使用）
-            graph_description: 图谱描述（独立构建模式时使用）
-            domain: 领域信息（独立构建模式时使用）
-            category_id: 分类ID（独立构建模式时使用）
+            build_mode: 构建模式，固定为'append'
+            target_graph_id: 目标图谱ID
             progress_callback: 进度回调函数
         
         Returns:
@@ -157,20 +149,8 @@ class KnowledgeGraphBuilder:
             
             print(f"🚀 开始处理文档: {filename}")
             print(f"📁 文件路径: {file_path}")
-            print(f"🔧 构建模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'}")
-            
-            # 独立构建模式：先创建新图谱
-            if build_mode == "standalone":
-                final_graph_name = graph_name or f"图谱_{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                final_graph_description = graph_description or f"基于文档 {filename} 构建的知识图谱"
-                final_category_id = category_id or "root"
-                graph_data = self.data_manager.create_graph(final_graph_name, final_graph_description, domain, final_category_id)
-                graph_id = graph_data["id"]
-                print(f"📊 创建新图谱: {final_graph_name} (ID: {graph_id})")
-                if category_id:
-                    print(f"📁 分类ID: {category_id}")
-            elif target_graph_id:
-                print(f"🎯 目标图谱ID: {target_graph_id}")
+            print(f"🔧 构建模式: 附加到现有图谱")
+            print(f"🎯 目标图谱ID: {target_graph_id}")
             
             # 设置工作目录
             work_dirs = self._get_work_directories(build_mode, graph_id)
@@ -214,7 +194,7 @@ class KnowledgeGraphBuilder:
             
             # 6. 构建知识图谱
             print("🕸️ 步骤6: 开始构建知识图谱...")
-            kg_result = await self._build_knowledge_graph(filename, ner_result, relation_result, build_mode, graph_id, progress_callback, domain)
+            kg_result = await self._build_knowledge_graph(filename, ner_result, relation_result, build_mode, graph_id, progress_callback)
             print(f"✅ 知识图谱构建完成，图谱ID: {kg_result['graph_id']}")
             
             # 7. 清理临时文件
@@ -851,9 +831,8 @@ class KnowledgeGraphBuilder:
         return triples
     
     async def _build_knowledge_graph(self, filename: str, ner_result: Dict, relation_result: Dict, 
-                                    build_mode: str = "standalone", target_graph_id: Optional[str] = None,
-                                    progress_callback: Optional[Callable[[int, str], None]] = None,
-                                    domain: Optional[str] = None) -> Dict[str, Any]:
+                                    build_mode: str = "append", target_graph_id: Optional[str] = None,
+                                    progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """构建知识图谱并保存到数据管理器"""
         try:
             start_time = datetime.now()
@@ -877,8 +856,7 @@ class KnowledgeGraphBuilder:
                 
                 graph = self.data_manager.create_graph(
                     name=graph_name,
-                    description=graph_description,
-                    domain=domain
+                    description=graph_description
                 )
                 graph_id = graph["id"]
                 print(f"📊 创建新图谱ID: {graph_id}")
@@ -924,23 +902,39 @@ class KnowledgeGraphBuilder:
                 progress_callback(93, f"正在导入 {len(entities_data)} 个实体和 {len(relations_data)} 个关系...")
             
             # 导入数据到数据管理器
+            print(f"🔄 开始导入数据到图谱 {graph_id}...")
+            print(f"📊 准备导入: {len(entities_data)} 个实体, {len(relations_data)} 个关系")
+            
             import_result = self.data_manager.import_kg_data(
                 graph_id=graph_id,
                 entities_data=entities_data,
                 relations_data=relations_data
             )
             
+            # 检查导入结果
+            print(f"📋 导入结果: {import_result}")
+            
+            if not import_result.get("success", False):
+                error_msg = import_result.get("error", "未知错误")
+                print(f"❌ 数据导入失败: {error_msg}")
+                raise Exception(f"数据导入失败: {error_msg}")
+            
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
             
+            imported_entities = import_result['imported_entities']
+            imported_relations = import_result['imported_relations']
+            
+            print(f"✅ 数据导入成功！实际导入: {imported_entities} 个实体, {imported_relations} 个关系")
+            
             if progress_callback:
-                progress_callback(100, f"知识图谱构建完成！共导入 {import_result['imported_entities']} 个实体和 {import_result['imported_relations']} 个关系")
+                progress_callback(100, f"知识图谱构建完成！共导入 {imported_entities} 个实体和 {imported_relations} 个关系")
             
             return {
                 "success": True,
                 "graph_id": graph_id,
-                "entities_count": import_result["imported_entities"],
-                "relations_count": import_result["imported_relations"],
+                "entities_count": imported_entities,
+                "relations_count": imported_relations,
                 "processing_time": processing_time,
                 "import_details": import_result
             }

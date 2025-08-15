@@ -29,7 +29,11 @@ app.add_middleware(
 )
 
 # 初始化数据管理器
-data_manager = DataManager()
+# 使用项目根目录下的data文件夹
+import os
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+data_dir = os.path.join(project_root, "data")
+data_manager = DataManager(data_dir)
 kg_builder = KnowledgeGraphBuilder()
 
 # 数据模型定义
@@ -97,7 +101,7 @@ class Task(BaseModel):
     created_at: str
     updated_at: str
     files: List[str] = []
-    build_mode: str = "standalone"  # standalone or append
+    build_mode: str = "append"  # append mode only
     target_graph_id: Optional[str] = None
     description: Optional[str] = ""
     result: Optional[Dict[str, Any]] = None
@@ -105,7 +109,7 @@ class Task(BaseModel):
 class CreateTaskRequest(BaseModel):
     name: str
     type: TaskType = TaskType.KNOWLEDGE_GRAPH_BUILD
-    build_mode: str = "standalone"
+    build_mode: str = "append"
     target_graph_id: Optional[str] = None
     description: Optional[str] = ""
     files: List[str] = []
@@ -185,22 +189,45 @@ async def get_graphs():
 
 @app.post("/api/graphs")
 async def create_graph(request: dict):
-    """创建新的知识图谱"""
+    """创建新的知识图谱（纯附加模式：一级分类即图谱）"""
     try:
         name = request.get("name")
         description = request.get("description", "")
         domain = request.get("domain")
-        category_id = request.get("category_id", "root")
         
         if not name:
             raise HTTPException(status_code=400, detail="图谱名称不能为空")
         
-        graph_data = data_manager.create_graph(name, description, domain, category_id)
-        return graph_data
+        # 在纯附加模式下，创建图谱时同时创建对应的一级分类
+        print("*" * 50)
+        print(f"DEBUG - 开始创建分类: {name}")
+        
+        try:
+            category_data = data_manager.create_category(name, description, "root")
+            category_id = category_data["id"]
+            print(f"DEBUG - 分类创建成功: {category_id}")
+            print(f"DEBUG - 分类数据: {category_data}")
+            
+            # 检查分类文件是否存在
+            import os
+            category_file = os.path.join(data_manager.categories_dir, f"{category_id}.json")
+            print(f"DEBUG - 分类文件路径: {category_file}")
+            print(f"DEBUG - 分类文件是否存在: {os.path.exists(category_file)}")
+            
+            # 创建图谱并关联到新创建的分类
+            graph_data = data_manager.create_graph(name, description, domain, category_id)
+            print(f"DEBUG - 图谱创建成功: {graph_data['id']}")
+            
+            print("*" * 50)
+            return graph_data
+        except Exception as inner_e:
+            print(f"DEBUG - 创建分类或图谱时出错: {inner_e}")
+            raise inner_e
     except ValueError as e:
+        print(f"DEBUG - 值错误: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"创建图谱失败: {e}")
+        print(f"DEBUG - 创建图谱失败: {e}")
         raise HTTPException(status_code=500, detail=f"创建图谱失败: {str(e)}")
 
 @app.get("/api/graphs/{graph_id}")
@@ -256,37 +283,21 @@ from fastapi import Form
 async def upload_document(
     background_tasks: BackgroundTasks, 
     file: UploadFile = File(...),
-    build_mode: str = Form("standalone"),  # standalone 或 append
-    target_graph_id: Optional[str] = Form(None),  # 当build_mode为append时指定目标图谱ID
-    graph_name: Optional[str] = Form(None),  # 图谱名称（独立构建模式）
-    graph_description: Optional[str] = Form(None),  # 图谱描述（独立构建模式）
-    domain: Optional[str] = Form(None),  # 领域信息（独立构建模式）
-    category_id: Optional[str] = Form(None)  # 分类ID（独立构建模式）
+    target_graph_id: str = Form(...)  # 目标图谱ID（必填）
 ):
-    """上传文档并开始知识图谱构建
+    """上传文档并附加到现有知识图谱
     
     Args:
         file: 上传的文档文件
-        build_mode: 构建模式，'standalone'(独立构建) 或 'append'(附加到现有图谱)
-        target_graph_id: 当build_mode为'append'时，指定要附加到的图谱ID
-        graph_name: 图谱名称（独立构建模式时使用）
-        graph_description: 图谱描述（独立构建模式时使用）
-        domain: 领域信息（独立构建模式时使用）
-        category_id: 分类ID（独立构建模式时使用）
+        target_graph_id: 要附加到的图谱ID
     """
     try:
-        # 验证构建模式
-        if build_mode not in ["standalone", "append"]:
-            raise HTTPException(status_code=400, detail="构建模式必须是 'standalone' 或 'append'")
-        
-        # 如果是附加模式，验证目标图谱是否存在
-        if build_mode == "append":
-            if not target_graph_id:
-                raise HTTPException(status_code=400, detail="附加模式下必须指定目标图谱ID")
-            # 验证图谱是否存在
-            target_graph = data_manager.get_graph(target_graph_id)
-            if not target_graph:
-                raise HTTPException(status_code=404, detail="目标图谱不存在")
+        # 验证目标图谱是否存在
+        if not target_graph_id:
+            raise HTTPException(status_code=400, detail="必须指定目标图谱ID")
+        target_graph = data_manager.get_graph(target_graph_id)
+        if not target_graph:
+            raise HTTPException(status_code=404, detail="目标图谱不存在")
         
         # 生成任务ID
         task_id = str(uuid.uuid4())
@@ -307,11 +318,11 @@ async def upload_document(
             type=TaskType.KNOWLEDGE_GRAPH_BUILD,
             status=TaskStatus.PENDING,
             progress=0,
-            message=f"文档上传成功，等待处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})",
+            message="文档上传成功，等待处理（附加到现有图谱）",
             created_at=current_time,
             updated_at=current_time,
             files=[file.filename],
-            build_mode=build_mode,
+            build_mode="append",
             target_graph_id=target_graph_id,
             description=f"通过文档上传创建的知识图谱构建任务"
         )
@@ -324,7 +335,7 @@ async def upload_document(
             task_id=task_id,
             status="pending",
             progress=0,
-            message=f"文档上传成功，等待处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+            message="文档上传成功，等待处理（附加到现有图谱）"
         )
         
         # 添加后台任务
@@ -333,19 +344,13 @@ async def upload_document(
             task_id, 
             str(file_path), 
             file.filename, 
-            build_mode, 
-            target_graph_id,
-            graph_name,
-            graph_description,
-            domain,
-            category_id
+            target_graph_id
         )
         
         return {
             "task_id": task_id,
-            "message": f"文档上传成功，开始处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})",
+            "message": "文档上传成功，开始处理（附加到现有图谱）",
             "filename": file.filename,
-            "build_mode": build_mode,
             "target_graph_id": target_graph_id
         }
     except Exception as e:
@@ -656,24 +661,89 @@ async def get_category_visualization(category_id: str):
 async def get_graph_visualization(graph_id: str):
     """获取图谱可视化数据"""
     try:
-        vis_data = data_manager.get_graph_visualization_data(graph_id)
-        if not vis_data:
+        visualization_data = data_manager.get_graph_visualization_data(graph_id)
+        if not visualization_data:
             raise HTTPException(status_code=404, detail="图谱不存在")
-        return vis_data
+        return visualization_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/graphs/{graph_id}/import-data")
+async def import_graph_data(graph_id: str):
+    """将现有的实体和关系数据导入到指定图谱"""
+    try:
+        # 检查图谱是否存在
+        graph = data_manager.get_graph(graph_id)
+        if not graph:
+            raise HTTPException(status_code=404, detail="图谱不存在")
+        
+        # 读取现有的实体和关系数据
+        import os
+        from core import config, load_json
+        
+        # 读取消歧后的实体数据
+        disambig_file_path = os.path.join(config.NER_PRO_OUTPUT_DIR, "all_entities_disambiguated.json")
+        if not os.path.exists(disambig_file_path):
+            raise HTTPException(status_code=404, detail="未找到实体数据文件，请先运行知识图谱构建流程")
+        
+        entities_raw_data = load_json(disambig_file_path)
+        
+        # 读取关系数据
+        relations_file_path = os.path.join(config.RE_OUTPUT_DIR, "all_relations.json")
+        if not os.path.exists(relations_file_path):
+            raise HTTPException(status_code=404, detail="未找到关系数据文件，请先运行知识图谱构建流程")
+        
+        relations_raw_data = load_json(relations_file_path)
+        
+        # 转换实体数据格式
+        entities_data = []
+        for entity in entities_raw_data:
+            entities_data.append({
+                "name": entity["entity_text"],
+                "type": entity["entity_type"],
+                "description": entity.get("entity_description", ""),
+                "frequency": len(entity.get("chunk_id", [])),
+                "source_chunks": entity.get("chunk_id", [])
+            })
+        
+        # 转换关系数据格式
+        relations_data = []
+        for relation in relations_raw_data:
+            relations_data.append({
+                "source_entity": relation["head"],
+                "target_entity": relation["tail"],
+                "relation_type": relation["relation"],
+                "confidence": 0.8,
+                "description": f"从文档中抽取的关系: {relation['head']} {relation['relation']} {relation['tail']}",
+                "source_chunk_id": relation.get("source_chunk_id", "")
+            })
+        
+        # 导入数据
+        import_result = data_manager.import_kg_data(
+            graph_id=graph_id,
+            entities_data=entities_data,
+            relations_data=relations_data
+        )
+        
+        return {
+            "success": True,
+            "message": f"成功导入 {import_result['imported_entities']} 个实体和 {import_result['imported_relations']} 个关系",
+            "imported_entities": import_result["imported_entities"],
+            "imported_relations": import_result["imported_relations"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"DEBUG - 导入数据失败: {e}")
+        raise HTTPException(status_code=500, detail=f"导入数据失败: {str(e)}")
 
 # 后台任务函数
 async def process_document(
     task_id: str, 
     file_path: str, 
     filename: str, 
-    build_mode: str = "standalone", 
-    target_graph_id: Optional[str] = None,
-    graph_name: Optional[str] = None,
-    graph_description: Optional[str] = None,
-    domain: Optional[str] = None,
-    category_id: Optional[str] = None
+    target_graph_id: str
 ):
     """后台处理文档的异步任务
     
@@ -681,29 +751,20 @@ async def process_document(
         task_id: 任务ID
         file_path: 文档文件路径
         filename: 文档文件名
-        build_mode: 构建模式，'standalone' 或 'append'
-        target_graph_id: 当build_mode为'append'时的目标图谱ID
-        graph_name: 图谱名称（独立构建模式时使用）
-        graph_description: 图谱描述（独立构建模式时使用）
-        domain: 领域信息（独立构建模式时使用）
-        category_id: 分类ID（独立构建模式时使用）
+        target_graph_id: 目标图谱ID
     """
     try:
         # 更新状态：开始处理
         task_status[task_id].status = "processing"
         task_status[task_id].progress = 10
-        task_status[task_id].message = f"开始文档处理 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+        task_status[task_id].message = "开始文档处理（附加到现有图谱）"
         
         # 调用知识图谱构建器
         result = await kg_builder.process_document(
             file_path=file_path,
             filename=filename,
-            build_mode=build_mode,
+            build_mode="append",
             target_graph_id=target_graph_id,
-            graph_name=graph_name,
-            graph_description=graph_description,
-            domain=domain,
-            category_id=category_id,
             progress_callback=lambda progress, message: update_task_progress(task_id, progress, message)
         )
         
@@ -711,14 +772,14 @@ async def process_document(
         current_time = datetime.now().isoformat()
         task_status[task_id].status = "completed"
         task_status[task_id].progress = 100
-        task_status[task_id].message = f"文档处理完成 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+        task_status[task_id].message = "文档处理完成（附加到现有图谱）"
         task_status[task_id].result = result
         
         # 同步更新tasks
         if task_id in tasks:
             tasks[task_id].status = TaskStatus.COMPLETED
             tasks[task_id].progress = 100
-            tasks[task_id].message = f"文档处理完成 (模式: {'独立构建' if build_mode == 'standalone' else '附加到现有图谱'})"
+            tasks[task_id].message = "文档处理完成（附加到现有图谱）"
             tasks[task_id].result = result
             tasks[task_id].updated_at = current_time
         
