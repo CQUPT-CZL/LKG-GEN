@@ -1,10 +1,8 @@
-# 02_scripts/step2.5_disambiguate.py
-
 import os
 import json
 from collections import defaultdict
-import config
-from utils import call_llm, load_json, save_json, load_prompt
+from . import config
+from .utils import call_llm, load_json, save_json, load_prompt
 from difflib import SequenceMatcher
 import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -118,7 +116,7 @@ def _process_single_batch(entity_list: list):
         return None
         
     try:
-        prompt_template = load_prompt(os.path.join(config.BASE_DIR, "prompts", "disambiguation_prompt.txt"))
+        prompt_template = load_prompt(config.DISAMBIGUATION_PROMPT_PATH)
         
         # 为了让Prompt更简洁，可以只发送必要的字段给LLM
         simplified_entities = [
@@ -147,7 +145,7 @@ def process_llm_clusters(original_entities: list, clusters: list):
         print("没有聚类信息，返回原始实体列表。")
         return original_entities
 
-    print("正在根据聚类配方，在Python中精确合并实体...")
+    print("🔧 正在根据聚类配方，在Python中精确合并实体...")
     
     final_entities = []
     # 创建一个从 entity_text 到其完整对象的映射，支持一个text对应多个对象（因为输入中可能有重复）
@@ -208,9 +206,8 @@ def process_llm_clusters(original_entities: list, clusters: list):
             template_obj["chunk_id"] = sorted(list(merged_chunk_ids))
             final_entities.append(template_obj)
 
-    print(f"实体合并完成。原始实体数: {len(original_entities)}, 合并后实体数: {len(final_entities)}")
+    print(f"✅ 实体合并完成。原始实体数: {len(original_entities)}, 合并后实体数: {len(final_entities)}")
     return final_entities
-
 
 def run_disambiguate_on_all_files():
     """对整个目录下的所有NER文件进行实体消歧，采用分类型分批处理策略"""
@@ -232,11 +229,11 @@ def run_disambiguate_on_all_files():
                 processed_files.append(filename)
                 print(f"✅ 从 {filename} 加载了 {len(entities)} 个实体")
             else:
-                print(f"⚠️  文件 {filename} 实体数据为空，跳过")
+                print(f"⚠️ 文件 {filename} 实体数据为空，跳过")
     
     if not all_entities:
         print("❌ 没有找到任何实体数据")
-        return
+        return None
     
     print(f"📊 总共收集到 {len(all_entities)} 个实体，来自 {len(processed_files)} 个文件")
     
@@ -246,7 +243,7 @@ def run_disambiguate_on_all_files():
     
     print(f"📋 发现 {len(type_groups)} 种实体类型:")
     for entity_type, entities in type_groups.items():
-        print(f"   🏷️  {entity_type}: {len(entities)} 个实体")
+        print(f"   🏷️ {entity_type}: {len(entities)} 个实体")
     
     # 2. 分类型进行消歧处理
     all_clusters = []
@@ -256,7 +253,7 @@ def run_disambiguate_on_all_files():
          print(f"\n🔄 正在处理类型: {entity_type} ({len(entities)} 个实体)")
          
          if len(entities) <= 1:
-             print(f"   ⏭️  实体数量过少，跳过消歧")
+             print(f"   ⏭️ 实体数量过少，跳过消歧")
              type_stats[entity_type] = {"original": len(entities), "clusters": 0, "processed": len(entities)}
              continue
          
@@ -291,7 +288,7 @@ def run_disambiguate_on_all_files():
              }
              print(f"   🎉 类型 {entity_type} 总共生成了 {len(type_clusters)} 个聚类")
          else:
-             print(f"   ⚠️  该类型未生成有效聚类")
+             print(f"   ⚠️ 该类型未生成有效聚类")
              type_stats[entity_type] = {
                  "original": len(entities), 
                  "clusters": 0, 
@@ -312,7 +309,7 @@ def run_disambiguate_on_all_files():
     print(f"🎉 实体消歧处理完成！")
     print(f"📈 总体统计:")
     print(f"   📄 处理文件数: {len(processed_files)}")
-    print(f"   🏷️  原始实体数: {len(all_entities)}")
+    print(f"   🏷️ 原始实体数: {len(all_entities)}")
     print(f"   🔗 消歧后实体数: {len(final_disambiguated_entities)}")
     print(f"   📉 压缩率: {(1 - len(final_disambiguated_entities)/len(all_entities))*100:.1f}%")
     print(f"   💾 结果保存到: {output_filepath}")
@@ -320,17 +317,44 @@ def run_disambiguate_on_all_files():
     print(f"\n📊 分类型详细统计:")
     for entity_type, stats in type_stats.items():
         if 'high_freq' in stats:
-            print(f"   🏷️  {entity_type}: {stats['original']} 个实体 → {stats['clusters']} 个聚类")
+            print(f"   🏷️ {entity_type}: {stats['original']} 个实体 → {stats['clusters']} 个聚类")
             print(f"      📈 高频: {stats['high_freq']} 个, 低频: {stats['low_freq']} 个")
         else:
-            print(f"   🏷️  {entity_type}: {stats['original']} 个实体 → {stats['clusters']} 个聚类")
+            print(f"   🏷️ {entity_type}: {stats['original']} 个实体 → {stats['clusters']} 个聚类")
     print("="*60)
+    
+    return output_filepath
+
+def simple_entity_disambiguation(entities):
+    """简化版实体消歧，用于快速处理"""
+    return run_disambiguate_on_all_files()
+
+def ensure_output_files_exist():
+    """确保输出目录存在"""
+    directories = [
+        config.DATA_DIR,
+        config.RAW_PAPERS_DIR,
+        config.PROCESSED_TEXT_DIR,
+        config.CHUNK_OUTPUT_DIR,
+        config.NER_OUTPUT_DIR,
+        config.NER_PRO_OUTPUT_DIR,
+        config.RE_OUTPUT_DIR,
+        config.GRAPH_TRIPLES_DIR
+    ]
+    
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+    
+    print("✅ 所有必要的输出目录已创建")
 
 if __name__ == "__main__":
     # 确保输出目录存在
-    os.makedirs(config.NER_PRO_OUTPUT_DIR, exist_ok=True)
+    ensure_output_files_exist()
     
     # 处理所有文件并合并结果
-    run_disambiguate_on_all_files()
+    result = run_disambiguate_on_all_files()
     
-    print("\n🎉 所有NER文件的实体消歧处理完成！")
+    if result:
+        print("\n🎉 所有NER文件的实体消歧处理完成！")
+    else:
+        print("\n❌ 实体消歧处理失败！")

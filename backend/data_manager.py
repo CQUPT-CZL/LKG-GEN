@@ -58,13 +58,14 @@ class DataManager:
         self._save_json(relation_data, file_path)
     
     # 图谱管理
-    def create_graph(self, name: str, description: str = "") -> Dict[str, Any]:
+    def create_graph(self, name: str, description: str = "", domain: str = None) -> Dict[str, Any]:
         """创建新的知识图谱"""
         graph_id = str(uuid.uuid4())
         graph_data = {
             "id": graph_id,
             "name": name,
             "description": description,
+            "domain": domain or "通用",
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "entity_count": 0,
@@ -131,7 +132,7 @@ class DataManager:
         
         return graph_data if graph_data else None
     
-    def update_graph(self, graph_id: str, name: str, description: str = "") -> Optional[Dict[str, Any]]:
+    def update_graph(self, graph_id: str, name: str, description: str = "", domain: str = None) -> Optional[Dict[str, Any]]:
         """更新知识图谱"""
         file_path = self.graphs_dir / f"{graph_id}.json"
         graph_data = self._load_json(file_path)
@@ -139,6 +140,8 @@ class DataManager:
         if graph_data:
             graph_data["name"] = name
             graph_data["description"] = description
+            if domain is not None:
+                graph_data["domain"] = domain
             graph_data["updated_at"] = datetime.now().isoformat()
             self._save_json(graph_data, file_path)
             return graph_data

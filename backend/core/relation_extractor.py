@@ -1,10 +1,8 @@
-# 02_scripts/step3_relation_extraction.py
-
 import os
 import json
 from collections import defaultdict
-import config
-from utils import call_llm, load_json, save_json, load_prompt
+from . import config
+from .utils import call_llm, load_json, save_json, load_prompt
 
 def create_chunk_to_entities_map(disambiguated_entities: list):
     """
@@ -48,12 +46,12 @@ def extract_relations_for_chunk(chunk_id: str, chunk_text: str, entities_in_chun
     """
     为单个文本块调用LLM进行关系抽取。
     """
-    print(f"--- 正在处理 Chunk {chunk_id} ---")
+    print(f"🔄 正在处理 Chunk {chunk_id}")
     if len(entities_in_chunk) < 2:
-        print("实体数量少于2个，无法形成关系，跳过。")
+        print("⚠️ 实体数量少于2个，无法形成关系，跳过。")
         return []
 
-    prompt_template = load_prompt(os.path.join(config.BASE_DIR, "prompts", "re_prompt.txt"))
+    prompt_template = load_prompt(config.RE_PROMPT_PATH)
     
     # 填充Prompt
     prompt = prompt_template.replace("{{CHUNK_TEXT}}", chunk_text)
@@ -61,36 +59,34 @@ def extract_relations_for_chunk(chunk_id: str, chunk_text: str, entities_in_chun
     prompt = prompt.replace("{{RELATION_TYPES}}", json.dumps(config.RELATION_TYPES, ensure_ascii=False))
     
     # 调用LLM
-    # 注意：这里我们期待一个列表作为返回值，需要确保 call_llm 能处理这种情况
-    # 我们可以让 call_llm 总是尝试解析JSON，如果失败则返回None
-    triples = call_llm(prompt, model_name="qwen-plus-latest") # 您可以指定模型
-    print(triples)
+    triples = call_llm(prompt, model_name="qwen-plus-latest")
+    
     if triples and isinstance(triples, list):
-        print(f"成功抽取到 {len(triples)} 个关系三元组。")
+        print(f"✅ 成功抽取到 {len(triples)} 个关系三元组。")
         return triples
     else:
-        print("未抽取到关系或LLM返回格式错误。")
+        print("⚠️ 未抽取到关系或LLM返回格式错误。")
         return []
 
 def run_relation_extraction_on_all():
     """
     对所有消歧后的实体进行关系抽取，生成统一的关系文件
     """
-    print("🔄 开始关系抽取处理...")
+    print("🚀 开始关系抽取处理...")
     
     # 加载消歧后的实体文件
     disambiguated_entities_path = os.path.join(config.NER_PRO_OUTPUT_DIR, "all_entities_disambiguated.json")
     
     if not os.path.exists(disambiguated_entities_path):
         print(f"❌ 找不到消歧实体文件: {disambiguated_entities_path}")
-        return
+        return None
     
     print(f"📄 正在加载消歧实体文件: all_entities_disambiguated.json")
     disambiguated_entities = load_json(disambiguated_entities_path)
     
     if not disambiguated_entities:
-        print("⚠️  消歧实体数据为空")
-        return
+        print("⚠️ 消歧实体数据为空")
+        return None
     
     print(f"✅ 加载了 {len(disambiguated_entities)} 个消歧后的实体")
     
@@ -100,7 +96,7 @@ def run_relation_extraction_on_all():
     
     if not all_chunks:
         print("❌ 没有找到任何chunk数据")
-        return
+        return None
     
     # 创建 chunk_id -> entities 的映射
     chunk_to_entities_map = create_chunk_to_entities_map(disambiguated_entities)
@@ -112,7 +108,7 @@ def run_relation_extraction_on_all():
     for chunk_id, entities in chunk_to_entities_map.items():
         chunk_text = all_chunks.get(chunk_id, "")
         if not chunk_text:
-            print(f"⚠️  Chunk {chunk_id} 在chunk数据中不存在，跳过")
+            print(f"⚠️ Chunk {chunk_id} 在chunk数据中不存在，跳过")
             continue
         
         if len(entities) < 2:
@@ -132,7 +128,7 @@ def run_relation_extraction_on_all():
                 if head in valid_entity_set and tail in valid_entity_set:
                     validated_triples.append(triple)
                 else:
-                    print(f"--- [已过滤] 发现幻觉实体，已丢弃: {triple}")
+                    print(f"🚫 [已过滤] 发现幻觉实体，已丢弃: {triple}")
         
         # 为每个三元组添加来源信息
         for triple in validated_triples:
@@ -154,16 +150,21 @@ def run_relation_extraction_on_all():
     
     print(f"✅ 关系抽取处理完成！")
     print(f"📈 统计信息:")
-    print(f"   🏷️  处理实体数: {len(disambiguated_entities)}")
+    print(f"   🏷️ 处理实体数: {len(disambiguated_entities)}")
     print(f"   📄 处理chunk数: {len(chunk_to_entities_map)}")
     print(f"   🔗 抽取关系数: {len(final_triples)}")
     print(f"   💾 结果保存到: {output_path}")
+    
+    return output_path
 
 if __name__ == "__main__":
     # 确保输出目录存在
     os.makedirs(config.RE_OUTPUT_DIR, exist_ok=True)
     
     # 处理所有文件的关系抽取
-    run_relation_extraction_on_all()
+    result = run_relation_extraction_on_all()
     
-    print("\n🎉 所有文件的关系抽取处理完成！")
+    if result:
+        print("\n🎉 所有文件的关系抽取处理完成！")
+    else:
+        print("\n❌ 关系抽取处理失败！")

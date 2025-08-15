@@ -36,6 +36,7 @@ export interface Graph {
   id: string;
   name: string;
   description: string;
+  domain?: string;
   created_at: string;
   updated_at: string;
   entity_count: number;
@@ -101,6 +102,31 @@ export interface TaskStatus {
   result?: any;
 }
 
+export interface Task {
+  id: string;
+  name: string;
+  type: 'knowledge_graph_build' | 'entity_extraction' | 'relation_extraction';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  created_at: string;
+  updated_at: string;
+  files: string[];
+  build_mode: 'standalone' | 'append';
+  target_graph_id?: string;
+  result?: any;
+  description?: string;
+}
+
+export interface CreateTaskRequest {
+  name: string;
+  type: 'knowledge_graph_build';
+  build_mode: 'standalone' | 'append';
+  target_graph_id?: string;
+  description?: string;
+  files: string[];
+}
+
 export interface SystemStats {
   total_graphs: number;
   total_entities: number;
@@ -130,20 +156,25 @@ export const apiService = {
   deleteGraph: (id: string): Promise<{ message: string }> => 
     api.delete(`/graphs/${id}`),
 
-  // 文档上传和处理
+  // 任务相关
   uploadDocument: (file: File): Promise<{ task_id: string; message: string; filename: string }> => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post('/documents/upload', formData, {
+    return api.post('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
   },
-
-  // 任务状态
   getTaskStatus: (taskId: string): Promise<TaskStatus> => 
     api.get(`/tasks/${taskId}/status`),
+  
+  // 任务管理
+  getTasks: (): Promise<Task[]> => api.get('/tasks'),
+  getTask: (taskId: string): Promise<Task> => api.get(`/tasks/${taskId}`),
+  createTask: (data: CreateTaskRequest): Promise<Task> => api.post('/tasks', data),
+  deleteTask: (taskId: string): Promise<{ message: string }> => api.delete(`/tasks/${taskId}`),
+  cancelTask: (taskId: string): Promise<{ message: string }> => api.post(`/tasks/${taskId}/cancel`),
 
   // 实体管理
   getEntities: (graphId: string): Promise<Entity[]> => 

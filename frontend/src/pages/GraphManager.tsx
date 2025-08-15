@@ -73,7 +73,9 @@ const GraphManager: React.FC = () => {
     setEditingGraph(record);
     form.setFieldsValue({
       name: record.name,
-      description: record.description
+      description: record.description,
+      domain: record.domain,
+      status: record.status
     });
     setIsModalVisible(true);
   };
@@ -188,6 +190,24 @@ const GraphManager: React.FC = () => {
       key: 'relation_count',
       sorter: (a, b) => a.relation_count - b.relation_count,
       render: (value) => value.toLocaleString()
+    },
+    {
+      title: '领域',
+      dataIndex: 'domain',
+      key: 'domain',
+      filters: [
+        { text: '通用', value: '通用' },
+        { text: '钢铁', value: '钢铁' },
+        { text: '冶金', value: '冶金' },
+        { text: '教育', value: '教育' },
+        { text: '科技', value: '科技' }
+      ],
+      onFilter: (value, record) => record.domain === value,
+      render: (domain) => (
+        <Tag color={domain === '通用' ? 'default' : 'blue'}>
+          {domain || '通用'}
+        </Tag>
+      )
     },
     {
       title: '创建时间',
@@ -422,6 +442,19 @@ const GraphManager: React.FC = () => {
               rows={3} 
               placeholder="请输入图谱描述" 
             />
+          </Form.Item>
+          
+          <Form.Item
+            name="domain"
+            label="领域"
+          >
+            <Select placeholder="选择领域" allowClear>
+              <Option value="通用">通用</Option>
+              <Option value="钢铁">钢铁</Option>
+              <Option value="冶金">冶金</Option>
+              <Option value="教育">教育</Option>
+              <Option value="科技">科技</Option>
+            </Select>
           </Form.Item>
           
           <Form.Item

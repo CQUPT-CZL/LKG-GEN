@@ -1,7 +1,7 @@
 import os
 import json
 from openai import OpenAI
-import config
+from . import config
 
 # 初始化大模型客户端
 client = OpenAI(
@@ -12,10 +12,14 @@ client = OpenAI(
 def call_llm(prompt: str, model_name="qwen-plus-latest"):
     """封装大模型调用接口"""
     try:
+        # 确保提示词中包含 'json' 关键词以满足 API 要求
+        if 'json' not in prompt.lower():
+            prompt += "\n\n请以JSON格式返回结果。"
+        
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "你是一个专业的材料学知识抽取专家。"},
+                {"role": "system", "content": "你是一个专业的材料学知识抽取专家。请始终以JSON格式返回结果。"},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1, # 低温确保结果稳定

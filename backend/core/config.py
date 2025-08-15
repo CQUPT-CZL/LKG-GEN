@@ -9,10 +9,11 @@ OPENAI_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1" # 或者�
 # --- File Paths ---
 # 使用os.path.join确保跨平台兼容性
 
-# 获取当前文件所在目录的绝对路径
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 获取backend目录的绝对路径
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(BACKEND_DIR)  # 项目根目录
 DATA_DIR = os.path.join(BASE_DIR, "data")
-PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
+PROMPTS_DIR = os.path.join(BACKEND_DIR, "prompts")
 
 RAW_PAPERS_DIR = os.path.join(DATA_DIR, "raw_papers")
 PROCESSED_TEXT_DIR = os.path.join(DATA_DIR, "processed_text")
@@ -26,6 +27,7 @@ GRAPH_TRIPLES_DIR = os.path.join(DATA_DIR, "graph_triples")
 NER_PROMPT_PATH = os.path.join(PROMPTS_DIR, "ner_prompt.txt")
 RE_PROMPT_PATH = os.path.join(PROMPTS_DIR, "re_prompt.txt")
 DISAMBIGUATION_PROMPT_PATH = os.path.join(PROMPTS_DIR, "disambiguation_prompt.txt")
+ENTITY_VALIDATION_PROMPT_PATH = os.path.join(PROMPTS_DIR, "entity_validation_prompt.txt")
 
 # --- KG Schema Definition ---
 # 在这里定义你的实体和关系类型，方便在代码中引用

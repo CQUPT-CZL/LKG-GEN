@@ -7,20 +7,17 @@ from pathlib import Path
 from typing import Dict, Any, List, Callable, Optional
 from datetime import datetime
 
-# 添加src/scripts到Python路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'scripts'))
-
-# 导入现有的知识图谱构建模块
+# 导入重构后的核心模块
 try:
-    import config
-    from utils import save_json, load_json, load_text, load_prompt, call_llm
-    from step_chunk import run_chunk_on_file
-    from step2_ner import run_ner_on_file
-    from step3_re import run_relation_extraction_on_all
-    from kg_wrapper import simple_entity_disambiguation, ensure_output_files_exist
+    from core import (
+        config, save_json, load_json, load_text, load_prompt, call_llm,
+        run_chunk_on_file, run_ner_on_file, run_relation_extraction_on_all,
+        simple_entity_disambiguation, ensure_output_files_exist,
+        run_disambiguate_on_all_files
+    )
 except ImportError as e:
-    print(f"导入知识图谱构建模块失败: {e}")
-    print("请确保src/scripts目录下的模块可用")
+    print(f"导入知识图谱构建核心模块失败: {e}")
+    print("请确保backend/core目录下的模块可用")
 
 from data_manager import DataManager
 
@@ -131,6 +128,9 @@ class KnowledgeGraphBuilder:
     async def process_document(self, file_path: str, filename: str, 
                              build_mode: str = "standalone",
                              target_graph_id: Optional[str] = None,
+                             graph_name: Optional[str] = None,
+                             graph_description: Optional[str] = None,
+                             domain: Optional[str] = None,
                              progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """处理文档并构建知识图谱
         
@@ -139,6 +139,9 @@ class KnowledgeGraphBuilder:
             filename: 文档文件名
             build_mode: 构建模式，'standalone'(独立构建) 或 'append'(附加到现有图谱)
             target_graph_id: 当build_mode为'append'时的目标图谱ID
+            graph_name: 图谱名称（独立构建模式时使用）
+            graph_description: 图谱描述（独立构建模式时使用）
+            domain: 领域信息（独立构建模式时使用）
             progress_callback: 进度回调函数
         
         Returns:
@@ -153,10 +156,11 @@ class KnowledgeGraphBuilder:
             
             # 独立构建模式：先创建新图谱
             if build_mode == "standalone":
-                graph_name = f"图谱_{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                graph_data = self.data_manager.create_graph(graph_name, f"基于文档 {filename} 构建的知识图谱")
+                final_graph_name = graph_name or f"图谱_{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                final_graph_description = graph_description or f"基于文档 {filename} 构建的知识图谱"
+                graph_data = self.data_manager.create_graph(final_graph_name, final_graph_description, domain)
                 graph_id = graph_data["id"]
-                print(f"📊 创建新图谱: {graph_name} (ID: {graph_id})")
+                print(f"📊 创建新图谱: {final_graph_name} (ID: {graph_id})")
             elif target_graph_id:
                 print(f"🎯 目标图谱ID: {target_graph_id}")
             
@@ -202,7 +206,7 @@ class KnowledgeGraphBuilder:
             
             # 6. 构建知识图谱
             print("🕸️ 步骤6: 开始构建知识图谱...")
-            kg_result = await self._build_knowledge_graph(filename, ner_result, relation_result, build_mode, graph_id, progress_callback)
+            kg_result = await self._build_knowledge_graph(filename, ner_result, relation_result, build_mode, graph_id, progress_callback, domain)
             print(f"✅ 知识图谱构建完成，图谱ID: {kg_result['graph_id']}")
             
             # 7. 清理临时文件
@@ -434,8 +438,11 @@ class KnowledgeGraphBuilder:
             
             print("🔄 开始调用NER处理函数...")
             # 调用现有的NER函数
+            # 调用step2_ner.py中的run_ner_on_file函数进行实体识别
+            # 参数1: chunk_file_path - 分块后的文件路径
+            # 参数2: 2 - 使用2个线程进行并行处理
             await asyncio.get_event_loop().run_in_executor(
-                None, run_ner_on_file, chunk_file_path, 2  # 使用2个线程
+                None, run_ner_on_file, chunk_file_path, 2
             )
             print("✅ NER处理函数调用完成")
             
@@ -507,9 +514,9 @@ class KnowledgeGraphBuilder:
             print(f"📁 消歧输出目录: {config.NER_PRO_OUTPUT_DIR}")
             
             print("🔄 开始调用消歧处理函数...")
-            # 调用简化的消歧函数
+            # 直接调用消歧处理函数
             success = await asyncio.get_event_loop().run_in_executor(
-                None, simple_entity_disambiguation
+                None, run_disambiguate_on_all_files
             )
             print(f"✅ 消歧处理函数调用完成，结果: {success}")
             
@@ -829,7 +836,8 @@ class KnowledgeGraphBuilder:
     
     async def _build_knowledge_graph(self, filename: str, ner_result: Dict, relation_result: Dict, 
                                     build_mode: str = "standalone", target_graph_id: Optional[str] = None,
-                                    progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
+                                    progress_callback: Optional[Callable[[int, str], None]] = None,
+                                    domain: Optional[str] = None) -> Dict[str, Any]:
         """构建知识图谱并保存到数据管理器"""
         try:
             start_time = datetime.now()
@@ -853,7 +861,8 @@ class KnowledgeGraphBuilder:
                 
                 graph = self.data_manager.create_graph(
                     name=graph_name,
-                    description=graph_description
+                    description=graph_description,
+                    domain=domain
                 )
                 graph_id = graph["id"]
                 print(f"📊 创建新图谱ID: {graph_id}")
@@ -878,7 +887,7 @@ class KnowledgeGraphBuilder:
                 entities_data.append({
                     "name": entity["entity_text"],
                     "type": entity["entity_type"],
-                    "description": entity.get("description", ""),
+                    "description": entity.get("entity_description", ""),
                     "frequency": len(entity.get("chunk_id", [])),  # 使用出现次数作为频率
                     "source_chunks": entity.get("chunk_id", [])
                 })

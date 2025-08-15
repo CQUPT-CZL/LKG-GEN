@@ -5,18 +5,16 @@ import sys
 import json
 from pathlib import Path
 
-# 添加src/scripts到Python路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'scripts'))
-
+# 导入重构后的核心模块
 try:
-    import config
-    from utils import save_json, load_json, load_text
-    from step_chunk import run_chunk_on_file
-    from step2_ner import run_ner_on_file
-    from step3_re import run_relation_extraction_on_all
-    from step_disambiguate import run_disambiguate_on_all_files
+    from core import (
+        config, save_json, load_json, load_text,
+        run_chunk_on_file, run_ner_on_file, run_relation_extraction_on_all,
+        run_disambiguate_on_all_files
+    )
 except ImportError as e:
-    print(f"导入模块失败: {e}")
+    print(f"导入知识图谱构建核心模块失败: {e}")
+    print("请确保backend/core目录下的模块可用")
 
 def run_disambiguation():
     """运行实体消歧的包装函数"""

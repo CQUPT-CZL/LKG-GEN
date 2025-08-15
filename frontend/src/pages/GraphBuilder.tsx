@@ -267,18 +267,43 @@ const GraphBuilder: React.FC = () => {
       return;
     }
 
+    // 验证独立构建模式下的图谱名称
+    if (buildMode === 'standalone') {
+      try {
+        await form.validateFields(['graphName']);
+      } catch (error) {
+        message.warning('请填写图谱名称！');
+        return;
+      }
+    }
+
     try {
       setIsProcessing(true);
       setCurrentStep(1);
 
       // 上传文档并开始构建
       let lastTaskId = null;
+      const formValues = form.getFieldsValue();
+      
       for (const file of uploadedFiles) {
         const formData = new FormData();
         formData.append('file', file.originFileObj);
         formData.append('build_mode', buildMode);
         if (buildMode === 'append' && selectedGraphId) {
           formData.append('target_graph_id', selectedGraphId);
+        }
+        
+        // 独立构建模式下添加图谱信息
+        if (buildMode === 'standalone') {
+          if (formValues.graphName) {
+            formData.append('graph_name', formValues.graphName);
+          }
+          if (formValues.description) {
+            formData.append('graph_description', formValues.description);
+          }
+          if (formValues.domain) {
+            formData.append('domain', formValues.domain);
+          }
         }
         
         const result = await fetch('/api/documents/upload', {

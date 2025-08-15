@@ -9,7 +9,8 @@ import {
   BranchesOutlined,
   EyeOutlined,
   DatabaseOutlined,
-  ShareAltOutlined
+  ShareAltOutlined,
+  UnorderedListOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -31,8 +32,12 @@ const Sidebar: React.FC = () => {
       label: '知识图谱构建',
       children: [
         {
+          key: '/tasks',
+          label: '任务管理',
+        },
+        {
           key: '/builder',
-          label: '文档处理',
+          label: '实时构建',
         },
       ],
     },

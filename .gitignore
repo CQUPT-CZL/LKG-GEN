@@ -1,10 +1,87 @@
+# Python
 .venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Backend specific
+backend/__pycache__/
+backend/data/
+backend/temp/
+backend/uploads/
+
+# Data directories
 src/scripts/__pycache__/
-.DS_Store
-src/scripts/lib/*
 src/data/*
+data/
+temp/
+uploads/
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+
+# Libraries
+src/scripts/lib/*
 lib/bindings/utils.js
 lib/tom-select/tom-select.complete.min.js
 lib/tom-select/tom-select.css
 lib/vis-9.1.2/vis-network.css
 lib/vis-9.1.2/vis-network.min.js
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test files
+test_*.txt
+test_*.md
+test_*.html
+test_*.py
+frontend_test.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Lock files (optional, depends on team preference)
+# uv.lock
+# pnpm-lock.yaml

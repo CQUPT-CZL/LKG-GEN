@@ -5,6 +5,7 @@ import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 import Dashboard from './pages/Dashboard';
 import GraphBuilder from './pages/GraphBuilder';
+import TaskManager from './pages/TaskManager';
 import GraphManager from './pages/GraphManager';
 import GraphVisualization from './pages/GraphVisualization';
 import EntityManager from './pages/EntityManager';
@@ -24,6 +25,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/builder" element={<GraphBuilder />} />
+            <Route path="/tasks" element={<TaskManager />} />
             <Route path="/manager" element={<GraphManager />} />
             <Route path="/visualization" element={<GraphVisualization />} />
             <Route path="/entities" element={<EntityManager />} />
