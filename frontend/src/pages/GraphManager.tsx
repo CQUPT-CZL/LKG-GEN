@@ -16,7 +16,8 @@ import {
   Col,
   Tooltip,
   Popconfirm,
-  message
+  message,
+  TreeSelect
 } from 'antd';
 import {
   EyeOutlined,
@@ -26,12 +27,13 @@ import {
   PlusOutlined,
   SearchOutlined,
   FilterOutlined,
-  DatabaseOutlined
+  DatabaseOutlined,
+  FolderOutlined
 } from '@ant-design/icons';
-import { apiService, Graph } from '../services/api';
+import { apiService, Graph, Category } from '../services/api';
 import type { ColumnsType } from 'antd/es/table';
 
-const { Title, Paragraph } = Typography;
+const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
@@ -45,11 +47,38 @@ const GraphManager: React.FC = () => {
   const [editingGraph, setEditingGraph] = useState<Graph | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categoryTree, setCategoryTree] = useState<Category | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadGraphs();
+    loadCategoryTree();
   }, []);
+
+  const loadCategoryTree = async () => {
+    try {
+      const tree = await apiService.getCategoryTree();
+      setCategoryTree(tree);
+    } catch (error) {
+      console.error('加载分类树失败:', error);
+    }
+  };
+
+  const buildCategoryTreeData = (category: Category | null): any[] => {
+    if (!category) return [];
+    
+    const buildNode = (node: Category): any => {
+      return {
+        title: `${node.name} (${node.graph_ids?.length || 0})`,
+        value: node.id,
+        key: node.id,
+        children: node.children?.map(child => buildNode(child)) || []
+      };
+    };
+    
+    return [buildNode(category)];
+  };
 
   const loadGraphs = async () => {
     setLoading(true);
@@ -190,6 +219,19 @@ const GraphManager: React.FC = () => {
       key: 'relation_count',
       sorter: (a, b) => a.relation_count - b.relation_count,
       render: (value) => value.toLocaleString()
+    },
+    {
+      title: '分类',
+      dataIndex: 'category_name',
+      key: 'category_name',
+      filteredValue: categoryFilter ? [categoryFilter] : null,
+      onFilter: (value, record) => record.category_id === value,
+      render: (categoryName, record) => (
+        <Space>
+          <FolderOutlined style={{ color: '#52c41a' }} />
+          <Text>{categoryName || '根目录'}</Text>
+        </Space>
+      )
     },
     {
       title: '领域',
@@ -380,6 +422,15 @@ const GraphManager: React.FC = () => {
               style={{ width: 250 }}
               onSearch={setSearchText}
               onChange={(e) => !e.target.value && setSearchText('')}
+            />
+            <TreeSelect
+              placeholder="分类筛选"
+              allowClear
+              style={{ width: 200 }}
+              treeData={buildCategoryTreeData(categoryTree)}
+              onChange={setCategoryFilter}
+              showSearch
+              treeDefaultExpandAll
             />
             <Select
               placeholder="状态筛选"

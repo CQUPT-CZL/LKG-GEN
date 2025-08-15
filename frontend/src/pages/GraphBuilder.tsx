@@ -17,7 +17,8 @@ import {
   Form,
   Input,
   Select,
-  Radio
+  Radio,
+  TreeSelect
 } from 'antd';
 import {
   InboxOutlined,
@@ -29,7 +30,7 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
-import { apiService, TaskStatus } from '../services/api';
+import { apiService, TaskStatus, Category } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Dragger } = Upload;
@@ -60,6 +61,8 @@ const GraphBuilder: React.FC = () => {
   const [buildMode, setBuildMode] = useState<'standalone' | 'append'>('standalone');
   const [availableGraphs, setAvailableGraphs] = useState<any[]>([]);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
+  const [categoryTree, setCategoryTree] = useState<Category | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [processSteps, setProcessSteps] = useState<ProcessStep[]>([
     {
       title: '📝 文档预处理',
@@ -162,18 +165,38 @@ const GraphBuilder: React.FC = () => {
     });
   };
 
-  // 加载可用图谱列表
+  // 构建分类树数据
+  const buildCategoryTreeData = (category: Category | null): any[] => {
+    if (!category) return [];
+    
+    const buildNode = (node: Category): any => {
+      return {
+        title: `${node.name} (${node.graph_ids?.length || 0})`,
+        value: node.id,
+        key: node.id,
+        children: node.children?.map(child => buildNode(child)) || []
+      };
+    };
+    
+    return [buildNode(category)];
+  };
+
+  // 加载可用图谱列表和分类树
   useEffect(() => {
-    const loadGraphs = async () => {
+    const loadData = async () => {
       try {
-        const graphs = await apiService.getGraphs();
+        const [graphs, tree] = await Promise.all([
+          apiService.getGraphs(),
+          apiService.getCategoryTree()
+        ]);
         setAvailableGraphs(graphs);
+        setCategoryTree(tree);
       } catch (error) {
-        console.error('加载图谱列表失败:', error);
+        console.error('加载数据失败:', error);
       }
     };
     
-    loadGraphs();
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -303,6 +326,9 @@ const GraphBuilder: React.FC = () => {
           }
           if (formValues.domain) {
             formData.append('domain', formValues.domain);
+          }
+          if (formValues.categoryId) {
+            formData.append('category_id', formValues.categoryId);
           }
         }
         
@@ -511,6 +537,16 @@ const GraphBuilder: React.FC = () => {
                       </Row>
                       <Form.Item name="description" label="描述">
                          <Input.TextArea rows={3} placeholder="请输入图谱描述（可选）" />
+                       </Form.Item>
+                       <Form.Item name="categoryId" label="分类目录">
+                         <TreeSelect
+                           placeholder="选择分类目录（可选）"
+                           allowClear
+                           treeData={buildCategoryTreeData(categoryTree)}
+                           onChange={setSelectedCategoryId}
+                           showSearch
+                           treeDefaultExpandAll
+                         />
                        </Form.Item>
                      </>
                    )}

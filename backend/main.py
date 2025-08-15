@@ -36,6 +36,16 @@ kg_builder = KnowledgeGraphBuilder()
 class GraphCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
+    category_id: Optional[str] = "root"
+
+class CategoryCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    parent_id: Optional[str] = "root"
+
+class CategoryUpdateRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
 
 class EntityCreateRequest(BaseModel): 
     name: str
@@ -180,12 +190,15 @@ async def create_graph(request: dict):
         name = request.get("name")
         description = request.get("description", "")
         domain = request.get("domain")
+        category_id = request.get("category_id", "root")
         
         if not name:
             raise HTTPException(status_code=400, detail="图谱名称不能为空")
         
-        graph_data = data_manager.create_graph(name, description, domain)
+        graph_data = data_manager.create_graph(name, description, domain, category_id)
         return graph_data
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(f"创建图谱失败: {e}")
         raise HTTPException(status_code=500, detail=f"创建图谱失败: {str(e)}")
@@ -247,7 +260,8 @@ async def upload_document(
     target_graph_id: Optional[str] = Form(None),  # 当build_mode为append时指定目标图谱ID
     graph_name: Optional[str] = Form(None),  # 图谱名称（独立构建模式）
     graph_description: Optional[str] = Form(None),  # 图谱描述（独立构建模式）
-    domain: Optional[str] = Form(None)  # 领域信息（独立构建模式）
+    domain: Optional[str] = Form(None),  # 领域信息（独立构建模式）
+    category_id: Optional[str] = Form(None)  # 分类ID（独立构建模式）
 ):
     """上传文档并开始知识图谱构建
     
@@ -258,6 +272,7 @@ async def upload_document(
         graph_name: 图谱名称（独立构建模式时使用）
         graph_description: 图谱描述（独立构建模式时使用）
         domain: 领域信息（独立构建模式时使用）
+        category_id: 分类ID（独立构建模式时使用）
     """
     try:
         # 验证构建模式
@@ -322,7 +337,8 @@ async def upload_document(
             target_graph_id,
             graph_name,
             graph_description,
-            domain
+            domain,
+            category_id
         )
         
         return {
@@ -538,6 +554,103 @@ async def delete_relation(relation_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# 分类管理
+@app.get("/api/categories")
+async def get_categories():
+    """获取所有分类"""
+    try:
+        categories = data_manager.get_all_categories()
+        return categories
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/categories")
+async def create_category(request: CategoryCreateRequest):
+    """创建新分类"""
+    try:
+        category = data_manager.create_category(
+            name=request.name,
+            description=request.description,
+            parent_id=request.parent_id
+        )
+        return category
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/categories/tree")
+async def get_category_tree():
+    """获取分类树结构"""
+    try:
+        # 确保根分类存在
+        data_manager._ensure_root_category()
+        tree = data_manager.get_category_tree()
+        return tree
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/categories/{category_id}")
+async def get_category(category_id: str):
+    """获取指定分类信息"""
+    try:
+        category = data_manager.get_category(category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="分类不存在")
+        return category
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/categories/{category_id}")
+async def update_category(category_id: str, request: CategoryUpdateRequest):
+    """更新分类信息"""
+    try:
+        category = data_manager.update_category(
+            category_id=category_id,
+            name=request.name,
+            description=request.description
+        )
+        if not category:
+            raise HTTPException(status_code=404, detail="分类不存在")
+        return category
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/categories/{category_id}")
+async def delete_category(category_id: str):
+    """删除分类"""
+    try:
+        success = data_manager.delete_category(category_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="分类不存在")
+        return {"message": "分类删除成功"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/categories/{category_id}/graphs")
+async def get_category_graphs(category_id: str):
+    """获取分类下的所有图谱"""
+    try:
+        graphs = data_manager.get_graphs_by_category(category_id)
+        return graphs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/categories/{category_id}/visualization")
+async def get_category_visualization(category_id: str):
+    """获取分类的合并可视化数据"""
+    try:
+        vis_data = data_manager.get_category_visualization_data(category_id)
+        if not vis_data:
+            raise HTTPException(status_code=404, detail="分类不存在或无图谱数据")
+        return vis_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # 图谱可视化数据
 @app.get("/api/graphs/{graph_id}/visualization")
 async def get_graph_visualization(graph_id: str):
@@ -559,7 +672,8 @@ async def process_document(
     target_graph_id: Optional[str] = None,
     graph_name: Optional[str] = None,
     graph_description: Optional[str] = None,
-    domain: Optional[str] = None
+    domain: Optional[str] = None,
+    category_id: Optional[str] = None
 ):
     """后台处理文档的异步任务
     
@@ -572,6 +686,7 @@ async def process_document(
         graph_name: 图谱名称（独立构建模式时使用）
         graph_description: 图谱描述（独立构建模式时使用）
         domain: 领域信息（独立构建模式时使用）
+        category_id: 分类ID（独立构建模式时使用）
     """
     try:
         # 更新状态：开始处理
@@ -588,6 +703,7 @@ async def process_document(
             graph_name=graph_name,
             graph_description=graph_description,
             domain=domain,
+            category_id=category_id,
             progress_callback=lambda progress, message: update_task_progress(task_id, progress, message)
         )
         

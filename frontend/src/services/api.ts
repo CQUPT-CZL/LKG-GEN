@@ -37,11 +37,28 @@ export interface Graph {
   name: string;
   description: string;
   domain?: string;
+  category_id?: string;
+  category_path?: string;
+  category_name?: string;
   created_at: string;
   updated_at: string;
   entity_count: number;
   relation_count: number;
   status: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  description: string;
+  parent_id?: string;
+  level: number;
+  path: string;
+  children_ids: string[];
+  graph_ids: string[];
+  created_at: string;
+  updated_at: string;
+  children?: Category[];  // 用于树形结构
 }
 
 export interface Entity {
@@ -149,12 +166,25 @@ export const apiService = {
   // 图谱管理
   getGraphs: (): Promise<Graph[]> => api.get('/graphs'),
   getGraph: (id: string): Promise<Graph> => api.get(`/graphs/${id}`),
-  createGraph: (data: { name: string; description?: string }): Promise<Graph> => 
+  createGraph: (data: { name: string; description?: string; category_id?: string }): Promise<Graph> => 
     api.post('/graphs', data),
   updateGraph: (id: string, data: { name: string; description?: string }): Promise<Graph> => 
     api.put(`/graphs/${id}`, data),
   deleteGraph: (id: string): Promise<{ message: string }> => 
     api.delete(`/graphs/${id}`),
+
+  // 分类管理
+  getCategories: (): Promise<Category[]> => api.get('/categories'),
+  getCategoryTree: (): Promise<Category> => api.get('/categories/tree'),
+  getCategory: (id: string): Promise<Category> => api.get(`/categories/${id}`),
+  createCategory: (data: { name: string; description?: string; parent_id?: string }): Promise<Category> => 
+    api.post('/categories', data),
+  updateCategory: (id: string, data: { name: string; description?: string }): Promise<Category> => 
+    api.put(`/categories/${id}`, data),
+  deleteCategory: (id: string): Promise<{ message: string }> => 
+    api.delete(`/categories/${id}`),
+  getCategoryGraphs: (categoryId: string): Promise<Graph[]> => 
+    api.get(`/categories/${categoryId}/graphs`),
 
   // 任务相关
   uploadDocument: (file: File): Promise<{ task_id: string; message: string; filename: string }> => {
@@ -208,9 +238,11 @@ export const apiService = {
   deleteRelation: (id: string): Promise<{ message: string }> => 
     api.delete(`/relations/${id}`),
 
-  // 图谱可视化
+  // 可视化数据
   getGraphVisualization: (graphId: string): Promise<VisualizationData> => 
     api.get(`/graphs/${graphId}/visualization`),
+  getCategoryVisualization: (categoryId: string): Promise<VisualizationData> => 
+    api.get(`/categories/${categoryId}/visualization`),
 };
 
 export default api;

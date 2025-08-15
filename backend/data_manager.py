@@ -17,9 +17,13 @@ class DataManager:
         self.entities_dir = self.data_dir / "entities"
         self.relations_dir = self.data_dir / "relations"
         self.tasks_dir = self.data_dir / "tasks"
+        self.categories_dir = self.data_dir / "categories"  # 新增：分类目录
         
-        for dir_path in [self.graphs_dir, self.entities_dir, self.relations_dir, self.tasks_dir]:
+        for dir_path in [self.graphs_dir, self.entities_dir, self.relations_dir, self.tasks_dir, self.categories_dir]:
             dir_path.mkdir(exist_ok=True)
+            
+        # 初始化根分类
+        self._ensure_root_category()
     
     def _load_json(self, file_path: Path) -> Dict[str, Any]:
         """加载JSON文件"""
@@ -58,14 +62,197 @@ class DataManager:
         self._save_json(relation_data, file_path)
     
     # 图谱管理
-    def create_graph(self, name: str, description: str = "", domain: str = None) -> Dict[str, Any]:
+    def _ensure_root_category(self):
+        """确保根分类存在"""
+        root_category_path = self.categories_dir / "root.json"
+        if not root_category_path.exists():
+            root_category = {
+                "id": "root",
+                "name": "根目录",
+                "description": "知识图谱根分类目录",
+                "parent_id": None,
+                "level": 0,
+                "path": "/",
+                "children_ids": [],
+                "graph_ids": [],
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            self._save_json(root_category, root_category_path)
+    
+    def create_category(self, name: str, description: str = "", parent_id: str = "root") -> Dict[str, Any]:
+        """创建新分类"""
+        category_id = str(uuid.uuid4())
+        
+        # 获取父分类信息
+        parent_category = self.get_category(parent_id)
+        if not parent_category:
+            raise ValueError(f"父分类 {parent_id} 不存在")
+        
+        # 计算分类层级和路径
+        level = parent_category["level"] + 1
+        if level > 3:  # 限制最大层级为3级
+            raise ValueError("分类层级不能超过3级")
+        
+        parent_path = parent_category["path"]
+        path = f"{parent_path}{name}/" if parent_path != "/" else f"/{name}/"
+        
+        category_data = {
+            "id": category_id,
+            "name": name,
+            "description": description,
+            "parent_id": parent_id,
+            "level": level,
+            "path": path,
+            "children_ids": [],
+            "graph_ids": [],
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # 保存分类
+        self.save_category(category_id, category_data)
+        
+        # 更新父分类的子分类列表
+        parent_category["children_ids"].append(category_id)
+        parent_category["updated_at"] = datetime.now().isoformat()
+        self.save_category(parent_id, parent_category)
+        
+        return category_data
+    
+    def save_category(self, category_id: str, category_data: Dict[str, Any]):
+        """保存分类数据"""
+        file_path = self.categories_dir / f"{category_id}.json"
+        self._save_json(category_data, file_path)
+    
+    def get_category(self, category_id: str) -> Optional[Dict[str, Any]]:
+        """获取分类信息"""
+        file_path = self.categories_dir / f"{category_id}.json"
+        if file_path.exists():
+            data = self._load_json(file_path)
+            return data if data else None
+        return None
+    
+    def get_all_categories(self) -> List[Dict[str, Any]]:
+        """获取所有分类"""
+        return self._get_all_files_data(self.categories_dir)
+    
+    def get_category_tree(self) -> Dict[str, Any]:
+        """获取分类树结构"""
+        # 确保根分类存在
+        self._ensure_root_category()
+        
+        def build_tree(category_id: str) -> Dict[str, Any]:
+            category = self.get_category(category_id)
+            if not category:
+                # 如果是根分类不存在，抛出异常
+                if category_id == "root":
+                    raise Exception(f"根分类不存在: {category_id}")
+                # 其他分类不存在则返回None
+                return None
+            
+            # 构建子分类树
+            children = []
+            for child_id in category.get("children_ids", []):
+                child_tree = build_tree(child_id)
+                if child_tree:
+                    children.append(child_tree)
+            
+            return {
+                **category,
+                "children": children
+            }
+        
+        return build_tree("root")
+    
+    def update_category(self, category_id: str, name: str, description: str = "") -> Optional[Dict[str, Any]]:
+        """更新分类信息"""
+        category = self.get_category(category_id)
+        if not category:
+            return None
+        
+        # 更新基本信息
+        category["name"] = name
+        category["description"] = description
+        category["updated_at"] = datetime.now().isoformat()
+        
+        # 如果名称改变，需要更新路径
+        if category["name"] != name:
+            old_path = category["path"]
+            parent_category = self.get_category(category["parent_id"]) if category["parent_id"] else None
+            if parent_category:
+                parent_path = parent_category["path"]
+                new_path = f"{parent_path}{name}/" if parent_path != "/" else f"/{name}/"
+                category["path"] = new_path
+                
+                # 递归更新所有子分类的路径
+                self._update_children_paths(category_id, old_path, new_path)
+        
+        self.save_category(category_id, category)
+        return category
+    
+    def _update_children_paths(self, category_id: str, old_path: str, new_path: str):
+        """递归更新子分类路径"""
+        category = self.get_category(category_id)
+        if not category:
+            return
+        
+        for child_id in category.get("children_ids", []):
+            child = self.get_category(child_id)
+            if child:
+                child["path"] = child["path"].replace(old_path, new_path, 1)
+                child["updated_at"] = datetime.now().isoformat()
+                self.save_category(child_id, child)
+                self._update_children_paths(child_id, old_path, new_path)
+    
+    def delete_category(self, category_id: str) -> bool:
+        """删除分类（递归删除子分类和图谱）"""
+        if category_id == "root":
+            raise ValueError("不能删除根分类")
+        
+        category = self.get_category(category_id)
+        if not category:
+            return False
+        
+        # 递归删除所有子分类
+        for child_id in category.get("children_ids", []):
+            self.delete_category(child_id)
+        
+        # 删除分类下的所有图谱
+        for graph_id in category.get("graph_ids", []):
+            self.delete_graph(graph_id)
+        
+        # 从父分类中移除
+        if category["parent_id"]:
+            parent_category = self.get_category(category["parent_id"])
+            if parent_category and category_id in parent_category.get("children_ids", []):
+                parent_category["children_ids"].remove(category_id)
+                parent_category["updated_at"] = datetime.now().isoformat()
+                self.save_category(category["parent_id"], parent_category)
+        
+        # 删除分类文件
+        file_path = self.categories_dir / f"{category_id}.json"
+        if file_path.exists():
+            file_path.unlink()
+        
+        return True
+    
+    def create_graph(self, name: str, description: str = "", domain: str = None, category_id: str = "root") -> Dict[str, Any]:
         """创建新的知识图谱"""
         graph_id = str(uuid.uuid4())
+        
+        # 验证分类是否存在
+        category = self.get_category(category_id)
+        if not category:
+            raise ValueError(f"分类 {category_id} 不存在")
+        
         graph_data = {
             "id": graph_id,
             "name": name,
             "description": description,
             "domain": domain or "通用",
+            "category_id": category_id,  # 新增：所属分类
+            "category_path": category["path"],  # 新增：分类路径
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "entity_count": 0,
@@ -73,8 +260,15 @@ class DataManager:
             "status": "active"
         }
         
+        # 保存图谱
         file_path = self.graphs_dir / f"{graph_id}.json"
         self._save_json(graph_data, file_path)
+        
+        # 更新分类的图谱列表
+        category["graph_ids"].append(graph_id)
+        category["updated_at"] = datetime.now().isoformat()
+        self.save_category(category_id, category)
+        
         return graph_data
     
     def get_all_graphs(self) -> List[Dict[str, Any]]:
@@ -97,6 +291,15 @@ class DataManager:
             graph["entity_count"] = entity_count
             graph["relation_count"] = relation_count
             
+            # 确保有分类信息（兼容旧数据）
+            if "category_id" not in graph:
+                graph["category_id"] = "root"
+                graph["category_path"] = "/"
+            
+            # 获取分类名称
+            category = self.get_category(graph.get("category_id", "root"))
+            graph["category_name"] = category["name"] if category else "根目录"
+            
             # 只有当计数发生变化时才保存文件
             if current_entity_count != entity_count or current_relation_count != relation_count:
                 graph["updated_at"] = datetime.now().isoformat()
@@ -104,6 +307,17 @@ class DataManager:
                 self._save_json(graph, file_path)
         
         return sorted(graphs, key=lambda x: x["created_at"], reverse=True)
+    
+    def get_graphs_by_category(self, category_id: str) -> List[Dict[str, Any]]:
+        """获取指定分类下的图谱"""
+        all_graphs = self.get_all_graphs()
+        
+        if category_id == "root":
+            # 如果是根分类，返回所有图谱（包括所有子分类的图谱）
+            return all_graphs
+        else:
+            # 如果是具体分类，只返回该分类下的图谱
+            return [graph for graph in all_graphs if graph.get("category_id") == category_id]
     
     def get_graph(self, graph_id: str) -> Optional[Dict[str, Any]]:
         """获取指定知识图谱"""
@@ -153,6 +367,17 @@ class DataManager:
         file_path = self.graphs_dir / f"{graph_id}.json"
         
         if file_path.exists():
+            # 获取图谱信息以便从分类中移除
+            graph_data = self._load_json(file_path)
+            category_id = graph_data.get("category_id", "root")
+            
+            # 从分类中移除图谱
+            category = self.get_category(category_id)
+            if category and graph_id in category.get("graph_ids", []):
+                category["graph_ids"].remove(graph_id)
+                category["updated_at"] = datetime.now().isoformat()
+                self.save_category(category_id, category)
+            
             # 删除图谱文件
             file_path.unlink()
             
@@ -349,6 +574,98 @@ class DataManager:
                 "nodes": nodes,
                 "edges": edges,
                 "graph_info": graph
+            }
+            
+        except Exception as e:
+            raise e
+    
+    def get_category_visualization_data(self, category_id: str) -> Optional[Dict[str, Any]]:
+        """获取分类的合并可视化数据"""
+        try:
+            graphs = self.get_graphs_by_category(category_id)
+            if not graphs:
+                return None
+            
+            # 如果只有一个图谱，直接返回该图谱的可视化数据
+            if len(graphs) == 1:
+                return self.get_graph_visualization_data(graphs[0]['id'])
+            
+            # 合并多个图谱的数据
+            all_nodes = []
+            all_edges = []
+            all_graph_info = []
+            
+            # 实体类型颜色映射
+            type_colors = {
+                "钢铁材料": "#FF6B6B",
+                "生产工艺": "#4ECDC4",
+                "性能指标": "#45B7D1",
+                "应用领域": "#96CEB4",
+                "设备": "#FFEAA7",
+                "缺陷": "#DDA0DD",
+                "化学成分": "#98D8C8",
+                "热处理工艺": "#F7DC6F",
+                "机械性能": "#BB8FCE",
+                "表面处理": "#85C1E9",
+                "检测方法": "#F8C471"
+            }
+            
+            for graph in graphs:
+                graph_id = graph['id']
+                entities = self.get_entities(graph_id)
+                relations = self.get_relations(graph_id)
+                all_graph_info.append(graph)
+                
+                # 构建节点
+                for entity in entities:
+                    entity_type = entity.get("type") or entity.get("entity_type", "未知")
+                    entity_desc = entity.get("description", "无描述")
+                    color = type_colors.get(entity_type, "#BDC3C7")
+                    all_nodes.append({
+                        "id": entity["id"],
+                        "label": entity["name"],
+                        "title": f"类型: {entity_type}\n描述: {entity_desc}\n来源图谱: {graph['name']}",
+                        "color": color,
+                        "size": min(20 + entity.get("frequency", 1) * 5, 50),
+                        "font": {"size": 14},
+                        "type": entity_type,
+                        "graph_id": graph_id,
+                        "graph_name": graph['name']
+                    })
+                
+                # 构建边
+                for relation in relations:
+                    relation_desc = relation.get("description", "无描述")
+                    all_edges.append({
+                        "id": relation["id"],
+                        "from": relation["source_entity_id"],
+                        "to": relation["target_entity_id"],
+                        "label": relation["relation_type"],
+                        "title": f"关系: {relation['relation_type']}\n置信度: {relation['confidence']}\n描述: {relation_desc}\n来源图谱: {graph['name']}",
+                        "width": max(1, relation["confidence"] * 3),
+                        "arrows": "to",
+                        "color": {"color": "#848484", "highlight": "#FF6B6B"},
+                        "font": {"size": 12},
+                        "graph_id": graph_id,
+                        "graph_name": graph['name']
+                    })
+            
+            # 创建合并后的图谱信息
+            merged_graph_info = {
+                "id": f"merged_{category_id}",
+                "name": f"合并视图 - {self.get_category(category_id)['name'] if self.get_category(category_id) else '根分类'}",
+                "description": f"包含 {len(graphs)} 个图谱的合并视图",
+                "category_id": category_id,
+                "merged_graphs": [g['name'] for g in graphs],
+                "created_at": datetime.now().isoformat(),
+                "is_merged": True
+            }
+            
+            return {
+                "nodes": all_nodes,
+                "edges": all_edges,
+                "graph_info": merged_graph_info,
+                "source_graphs": all_graph_info
             }
             
         except Exception as e:

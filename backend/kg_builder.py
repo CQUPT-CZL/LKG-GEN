@@ -131,6 +131,7 @@ class KnowledgeGraphBuilder:
                              graph_name: Optional[str] = None,
                              graph_description: Optional[str] = None,
                              domain: Optional[str] = None,
+                             category_id: Optional[str] = None,
                              progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """处理文档并构建知识图谱
         
@@ -142,6 +143,7 @@ class KnowledgeGraphBuilder:
             graph_name: 图谱名称（独立构建模式时使用）
             graph_description: 图谱描述（独立构建模式时使用）
             domain: 领域信息（独立构建模式时使用）
+            category_id: 分类ID（独立构建模式时使用）
             progress_callback: 进度回调函数
         
         Returns:
@@ -161,9 +163,12 @@ class KnowledgeGraphBuilder:
             if build_mode == "standalone":
                 final_graph_name = graph_name or f"图谱_{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 final_graph_description = graph_description or f"基于文档 {filename} 构建的知识图谱"
-                graph_data = self.data_manager.create_graph(final_graph_name, final_graph_description, domain)
+                final_category_id = category_id or "root"
+                graph_data = self.data_manager.create_graph(final_graph_name, final_graph_description, domain, final_category_id)
                 graph_id = graph_data["id"]
                 print(f"📊 创建新图谱: {final_graph_name} (ID: {graph_id})")
+                if category_id:
+                    print(f"📁 分类ID: {category_id}")
             elif target_graph_id:
                 print(f"🎯 目标图谱ID: {target_graph_id}")
             

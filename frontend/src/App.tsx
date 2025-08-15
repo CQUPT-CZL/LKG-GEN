@@ -10,6 +10,7 @@ import GraphManager from './pages/GraphManager';
 import GraphVisualization from './pages/GraphVisualization';
 import EntityManager from './pages/EntityManager';
 import RelationManager from './pages/RelationManager';
+import CategoryManager from './pages/CategoryManager';
 import Settings from './pages/Settings';
 
 const { Content } = Layout;
@@ -30,6 +31,7 @@ function App() {
             <Route path="/visualization" element={<GraphVisualization />} />
             <Route path="/entities" element={<EntityManager />} />
             <Route path="/relations" element={<RelationManager />} />
+            <Route path="/categories" element={<CategoryManager />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </Content>

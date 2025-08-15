@@ -10,7 +10,8 @@ import {
   EyeOutlined,
   DatabaseOutlined,
   ShareAltOutlined,
-  UnorderedListOutlined
+  UnorderedListOutlined,
+  FolderOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -57,6 +58,10 @@ const Sidebar: React.FC = () => {
         {
           key: '/relations',
           label: '关系管理',
+        },
+        {
+          key: '/categories',
+          label: '分类管理',
         },
       ],
     },

@@ -16,7 +16,8 @@ import {
   Col,
   Divider,
   message,
-  Spin
+  Spin,
+  TreeSelect
 } from 'antd';
 import {
   FullscreenOutlined,
@@ -30,7 +31,7 @@ import {
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
-import { apiService, Graph, VisualizationData } from '../services/api';
+import { apiService, Graph, VisualizationData, Category } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -62,6 +63,7 @@ const GraphVisualization: React.FC = () => {
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
   const [selectedGraph, setSelectedGraph] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('root');
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -72,6 +74,7 @@ const GraphVisualization: React.FC = () => {
   const [showLabels, setShowLabels] = useState(true);
   const [loading, setLoading] = useState(false);
   const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [categoryTree, setCategoryTree] = useState<Category | null>(null);
   const [visualizationData, setVisualizationData] = useState<VisualizationData | null>(null);
   const [graphStats, setGraphStats] = useState<GraphStats>({
     nodes: 0,
@@ -80,12 +83,29 @@ const GraphVisualization: React.FC = () => {
     edgeTypes: {}
   });
 
-  // 加载图谱列表
-  const loadGraphs = async () => {
+  // 加载分类树
+  const loadCategoryTree = async () => {
     try {
-      const graphList = await apiService.getGraphs();
+      const tree = await apiService.getCategoryTree();
+      setCategoryTree(tree);
+    } catch (error) {
+      console.error('加载分类树失败:', error);
+      message.error('加载分类树失败');
+    }
+  };
+
+  // 加载图谱列表（根据分类）
+  const loadGraphs = async (categoryId: string = 'root') => {
+    try {
+      const graphList = await apiService.getCategoryGraphs(categoryId);
       setGraphs(graphList);
-      if (graphList.length > 0 && !selectedGraph) {
+      // 如果当前选择的图谱不在新的列表中，清空选择
+      if (selectedGraph && !graphList.find(g => g.id === selectedGraph)) {
+        setSelectedGraph('');
+        setVisualizationData(null);
+      }
+      // 如果没有选择图谱且有可用图谱，选择第一个
+      if (!selectedGraph && graphList.length > 0) {
         setSelectedGraph(graphList[0].id);
       }
     } catch (error) {
@@ -94,13 +114,13 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
-  // 加载图谱可视化数据
-  const loadVisualizationData = async (graphId: string) => {
-    if (!graphId) return;
+  // 加载可视化数据（根据分类）
+  const loadVisualizationData = async (categoryId: string) => {
+    if (!categoryId) return;
     
     setLoading(true);
     try {
-      const data = await apiService.getGraphVisualization(graphId);
+      const data = await apiService.getCategoryVisualization(categoryId);
       setVisualizationData(data);
       
       // 计算统计信息
@@ -124,8 +144,8 @@ const GraphVisualization: React.FC = () => {
       });
       
     } catch (error) {
-      console.error('加载图谱数据失败:', error);
-      message.error('加载图谱数据失败');
+      console.error('加载可视化数据失败:', error);
+      message.error('加载可视化数据失败');
     } finally {
       setLoading(false);
     }
@@ -217,8 +237,27 @@ const GraphVisualization: React.FC = () => {
     });
   };
 
+  // 将分类树转换为TreeSelect数据格式
+  const convertCategoryToTreeData = (category: Category): any => {
+    return {
+      title: category.name,
+      value: category.id,
+      key: category.id,
+      children: category.children?.map(child => convertCategoryToTreeData(child)) || []
+    };
+  };
+
+  // 处理分类选择变化
+  const handleCategoryChange = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    loadGraphs(categoryId);
+    loadVisualizationData(categoryId);
+  };
+
   useEffect(() => {
-    loadGraphs();
+    loadCategoryTree();
+    loadGraphs('root');
+    loadVisualizationData('root');
     return () => {
       if (networkInstance.current) {
         networkInstance.current.destroy();
@@ -226,11 +265,9 @@ const GraphVisualization: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (selectedGraph) {
-      loadVisualizationData(selectedGraph);
-    }
-  }, [selectedGraph]);
+  // 移除这个useEffect，因为分类变化已经在handleCategoryChange中处理
+
+  // 移除基于selectedGraph的useEffect，现在直接基于分类加载数据
 
   useEffect(() => {
     if (visualizationData) {
@@ -365,20 +402,18 @@ const GraphVisualization: React.FC = () => {
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[16, 16]} align="middle">
           <Col xs={24} sm={12} md={6}>
-            <Space>
-              <Text strong>选择图谱:</Text>
-              <Select
-                value={selectedGraph}
-                onChange={setSelectedGraph}
-                style={{ width: 150 }}
-                loading={loading}
-              >
-                {graphs.map((graph) => (
-                  <Option key={graph.id} value={graph.id}>
-                    {graph.name}
-                  </Option>
-                ))}
-              </Select>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <TreeSelect
+                style={{ width: '100%' }}
+                placeholder="请选择分类"
+                value={selectedCategory}
+                onChange={handleCategoryChange}
+                treeData={categoryTree ? [convertCategoryToTreeData(categoryTree)] : []}
+                showSearch
+                treeDefaultExpandAll
+                allowClear={false}
+              />
+
             </Space>
           </Col>
           
