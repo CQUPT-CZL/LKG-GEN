@@ -58,46 +58,15 @@ class KnowledgeGraphBuilder:
         except Exception as e:
             print(f"创建数据目录失败: {e}")
     
-    def _create_standalone_work_dir(self, graph_id: str) -> str:
-        """为独立构建模式创建专用工作目录"""
-        work_dir = os.path.join(config.DATA_DIR, "standalone_builds", graph_id)
-        
-        # 创建专用目录结构
-        directories = [
-            os.path.join(work_dir, "processed_text"),
-            os.path.join(work_dir, "chunk_output"),
-            os.path.join(work_dir, "ner_output"),
-            os.path.join(work_dir, "ner_pro_output"),
-            os.path.join(work_dir, "re_output")
-        ]
-        
-        for directory in directories:
-            os.makedirs(directory, exist_ok=True)
-        
-        print(f"🏗️ 为独立构建创建专用工作目录: {work_dir}")
-        return work_dir
+
     
-    def _get_work_directories(self, build_mode: str, graph_id: str = None) -> Dict[str, str]:
-        """根据构建模式获取工作目录"""
-        if build_mode == "standalone" and graph_id:
-            # 独立构建模式：使用专用目录
-            work_dir = self._create_standalone_work_dir(graph_id)
-            return {
-                "PROCESSED_TEXT_DIR": os.path.join(work_dir, "processed_text"),
-                "CHUNK_OUTPUT_DIR": os.path.join(work_dir, "chunk_output"),
-                "NER_OUTPUT_DIR": os.path.join(work_dir, "ner_output"),
-                "NER_PRO_OUTPUT_DIR": os.path.join(work_dir, "ner_pro_output"),
-                "RE_OUTPUT_DIR": os.path.join(work_dir, "re_output")
-            }
-        else:
-            # 附加模式：使用共享目录
-            return {
-                "PROCESSED_TEXT_DIR": config.PROCESSED_TEXT_DIR,
-                "CHUNK_OUTPUT_DIR": config.CHUNK_OUTPUT_DIR,
-                "NER_OUTPUT_DIR": config.NER_OUTPUT_DIR,
-                "NER_PRO_OUTPUT_DIR": config.NER_PRO_OUTPUT_DIR,
-                "RE_OUTPUT_DIR": config.RE_OUTPUT_DIR
-            }
+    def _get_work_directories(self, graph_name: str) -> Dict[str, str]:
+        """根据图谱名称获取工作目录"""
+        if not graph_name:
+            raise ValueError("图谱名称不能为空")
+        
+        # 所有图谱都使用图谱特定的子目录
+        return config.get_graph_data_dirs(graph_name)
     
     def _update_config_paths(self, work_dirs: Dict[str, str]):
         """临时更新config中的路径"""
@@ -126,7 +95,6 @@ class KnowledgeGraphBuilder:
             config.RE_OUTPUT_DIR = self.original_paths["RE_OUTPUT_DIR"]
     
     async def process_document(self, file_path: str, filename: str, 
-                             build_mode: str = "append",
                              target_graph_id: str = None,
                              progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """处理文档并附加到现有知识图谱
@@ -134,8 +102,7 @@ class KnowledgeGraphBuilder:
         Args:
             file_path: 文档文件路径
             filename: 文档文件名
-            build_mode: 构建模式，固定为'append'
-            target_graph_id: 目标图谱ID
+            target_graph_id: 目标图谱ID（可选，如果不指定则创建新图谱）
             progress_callback: 进度回调函数
         
         Returns:
@@ -152,9 +119,21 @@ class KnowledgeGraphBuilder:
             print(f"🔧 构建模式: 附加到现有图谱")
             print(f"🎯 目标图谱ID: {target_graph_id}")
             
+            # 🆕 获取图谱信息以确定使用的目录
+            graph_name = None
+            if target_graph_id:
+                graph_info = self.data_manager.get_graph(target_graph_id)
+                if graph_info:
+                    graph_name = graph_info.get('name')
+                    print(f"📊 目标图谱名称: {graph_name}")
+            
             # 设置工作目录
-            work_dirs = self._get_work_directories(build_mode, graph_id)
+            if not graph_name:
+                raise ValueError("无法获取图谱名称，请确保目标图谱存在")
+            
+            work_dirs = self._get_work_directories(graph_name)
             self._update_config_paths(work_dirs)
+            print(f"📂 使用数据目录: {work_dirs}")
             
             if progress_callback:
                 progress_callback(5, "开始文档预处理")
@@ -189,12 +168,12 @@ class KnowledgeGraphBuilder:
             
             # 5. 关系抽取
             print("🔗 步骤5: 开始关系抽取...")
-            relation_result = await self._extract_relations(build_mode, progress_callback)
+            relation_result = await self._extract_relations(progress_callback)
             print(f"✅ 关系抽取完成，抽取出 {relation_result.get('relations_count', 0)} 个关系")
             
             # 6. 构建知识图谱
             print("🕸️ 步骤6: 开始构建知识图谱...")
-            kg_result = await self._build_knowledge_graph(filename, ner_result, relation_result, build_mode, graph_id, progress_callback)
+            kg_result = await self._build_knowledge_graph(filename, ner_result, relation_result, graph_id, progress_callback)
             print(f"✅ 知识图谱构建完成，图谱ID: {kg_result['graph_id']}")
             
             # 7. 清理临时文件
@@ -215,8 +194,8 @@ class KnowledgeGraphBuilder:
             print(f"   结束时间: {total_end_time}")
             print(f"   总处理时间: {total_processing_time:.2f}秒")
             
-            # 使用正确的图谱ID（独立构建模式使用新创建的图谱ID）
-            final_graph_id = graph_id if build_mode == "standalone" else kg_result["graph_id"]
+            # 使用构建结果中的图谱ID
+            final_graph_id = kg_result["graph_id"]
             
             return {
                 "success": True,
@@ -556,7 +535,7 @@ class KnowledgeGraphBuilder:
             print(f"📋 错误堆栈: {traceback.format_exc()}")
             raise Exception(f"实体消歧失败: {e}")
     
-    async def _extract_relations(self, build_mode: str = "standalone", progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
+    async def _extract_relations(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """关系抽取处理"""
         try:
             if progress_callback:
@@ -564,7 +543,7 @@ class KnowledgeGraphBuilder:
             
             # 调用带进度的关系抽取函数
             await asyncio.get_event_loop().run_in_executor(
-                None, self._run_relation_extraction_with_progress, build_mode, progress_callback
+                None, self._run_relation_extraction_with_progress, progress_callback
             )
             
             # 获取关系抽取结果文件路径
@@ -585,7 +564,7 @@ class KnowledgeGraphBuilder:
         except Exception as e:
             raise Exception(f"关系抽取失败: {e}")
     
-    def _run_relation_extraction_with_progress(self, build_mode: str, progress_callback: Optional[Callable[[int, str], None]] = None):
+    def _run_relation_extraction_with_progress(self, progress_callback: Optional[Callable[[int, str], None]] = None):
         """带进度显示的关系抽取"""
         print("🔄 开始关系抽取处理...")
         
@@ -603,13 +582,9 @@ class KnowledgeGraphBuilder:
         
         print(f"✅ 加载了 {len(disambiguated_entities)} 个消歧后的实体")
         
-        # 加载chunk文件的内容（根据构建模式决定加载范围）
-        if build_mode == "standalone":
-            print("📚 独立构建模式：仅加载当前文档的chunks...")
-            all_chunks = self._load_current_chunks()
-        else:
-            print("📚 附加模式：加载所有文档chunks...")
-            all_chunks = self._load_all_chunks()
+        # 加载所有文档chunks（附加模式）
+        print("📚 加载所有文档chunks...")
+        all_chunks = self._load_all_chunks()
         
         if not all_chunks:
             raise Exception("没有找到任何chunk数据")
@@ -831,7 +806,7 @@ class KnowledgeGraphBuilder:
         return triples
     
     async def _build_knowledge_graph(self, filename: str, ner_result: Dict, relation_result: Dict, 
-                                    build_mode: str = "append", target_graph_id: Optional[str] = None,
+                                    target_graph_id: Optional[str] = None,
                                     progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """构建知识图谱并保存到数据管理器"""
         try:
@@ -840,17 +815,13 @@ class KnowledgeGraphBuilder:
             if progress_callback:
                 progress_callback(85, "开始构建知识图谱...")
             
-            # 根据构建模式决定图谱ID
-            if build_mode == "standalone" and target_graph_id:
-                # 独立构建模式：使用已创建的图谱ID
-                graph_id = target_graph_id
-                print(f"🎯 使用独立构建图谱ID: {graph_id}")
-            elif build_mode == "append" and target_graph_id:
-                # 附加模式：使用指定的目标图谱ID
+            # 决定图谱ID
+            if target_graph_id:
+                # 附加到指定的目标图谱
                 graph_id = target_graph_id
                 print(f"🔗 附加到现有图谱ID: {graph_id}")
             else:
-                # 兜底：创建新的知识图谱
+                # 创建新的知识图谱
                 graph_name = f"从 {filename} 构建的知识图谱"
                 graph_description = f"基于文档 {filename} 自动构建的知识图谱，包含实体识别和关系抽取结果"
                 

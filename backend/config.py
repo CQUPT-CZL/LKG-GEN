@@ -15,13 +15,43 @@ BASE_DIR = os.path.dirname(BACKEND_DIR)  # 项目根目录
 DATA_DIR = os.path.join(BASE_DIR, "data")
 PROMPTS_DIR = os.path.join(BACKEND_DIR, "prompts")
 
+# 基础数据目录（用于全局共享数据）
 RAW_PAPERS_DIR = os.path.join(DATA_DIR, "raw_papers")
+GRAPH_TRIPLES_DIR = os.path.join(DATA_DIR, "graph_triples")
+
+# 图谱特定的数据目录（默认路径，实际使用时会根据图谱名称动态生成）
 PROCESSED_TEXT_DIR = os.path.join(DATA_DIR, "processed_text")
 CHUNK_OUTPUT_DIR = os.path.join(DATA_DIR, "chunk_output")
 NER_PRO_OUTPUT_DIR = os.path.join(DATA_DIR, "ner_pro_output")
 NER_OUTPUT_DIR = os.path.join(DATA_DIR, "ner_output")
 RE_OUTPUT_DIR = os.path.join(DATA_DIR, "re_output")
-GRAPH_TRIPLES_DIR = os.path.join(DATA_DIR, "graph_triples")
+
+# 图谱特定目录的基础路径
+PROCESSED_TEXT_BASE_DIR = os.path.join(DATA_DIR, "processed_text")
+CHUNK_OUTPUT_BASE_DIR = os.path.join(DATA_DIR, "chunk_output")
+NER_OUTPUT_BASE_DIR = os.path.join(DATA_DIR, "ner_output")
+NER_PRO_OUTPUT_BASE_DIR = os.path.join(DATA_DIR, "ner_pro_output")
+RE_OUTPUT_BASE_DIR = os.path.join(DATA_DIR, "re_output")
+
+def get_graph_data_dirs(graph_name: str) -> dict:
+    """根据图谱名称获取对应的数据目录路径"""
+    import os  # 确保os模块可用
+    return {
+        "PROCESSED_TEXT_DIR": os.path.join(PROCESSED_TEXT_BASE_DIR, graph_name),
+        "CHUNK_OUTPUT_DIR": os.path.join(CHUNK_OUTPUT_BASE_DIR, graph_name),
+        "NER_OUTPUT_DIR": os.path.join(NER_OUTPUT_BASE_DIR, graph_name),
+        "NER_PRO_OUTPUT_DIR": os.path.join(NER_PRO_OUTPUT_BASE_DIR, graph_name),
+        "RE_OUTPUT_DIR": os.path.join(RE_OUTPUT_BASE_DIR, graph_name)
+    }
+
+def create_graph_directories(graph_name: str):
+    """为指定图谱创建所有必要的数据目录"""
+    import os  # 确保os模块可用
+    dirs = get_graph_data_dirs(graph_name)
+    for dir_path in dirs.values():
+        os.makedirs(dir_path, exist_ok=True)
+    print(f"✅ 已为图谱 '{graph_name}' 创建数据目录")
+    return dirs
 
 # --- Prompt Paths ---
 NER_PROMPT_PATH = os.path.join(PROMPTS_DIR, "ner_prompt.txt")

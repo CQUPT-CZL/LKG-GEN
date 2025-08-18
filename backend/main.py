@@ -102,7 +102,6 @@ class Task(BaseModel):
     created_at: str
     updated_at: str
     files: List[str] = []
-    build_mode: str = "append"  # append mode only
     target_graph_id: Optional[str] = None
     description: Optional[str] = ""
     result: Optional[Dict[str, Any]] = None
@@ -110,7 +109,6 @@ class Task(BaseModel):
 class CreateTaskRequest(BaseModel):
     name: str
     type: TaskType = TaskType.KNOWLEDGE_GRAPH_BUILD
-    build_mode: str = "append"
     target_graph_id: Optional[str] = None
     description: Optional[str] = ""
     files: List[str] = []
@@ -218,6 +216,11 @@ async def create_graph(request: dict):
             # 创建图谱并关联到新创建的分类
             graph_data = data_manager.create_graph(name, description, domain, category_id)
             print(f"DEBUG - 图谱创建成功: {graph_data['id']}")
+            
+            # 🆕 为新创建的图谱创建专用数据目录
+            import config
+            config.create_graph_directories(name)
+            print(f"📁 已为图谱 '{name}' 创建专用数据目录")
             
             print("*" * 50)
             return graph_data
@@ -399,7 +402,6 @@ async def create_task(background_tasks: BackgroundTasks, task_data: CreateTaskRe
             created_at=current_time,
             updated_at=current_time,
             files=task_data.files,
-            build_mode=task_data.build_mode,
             target_graph_id=task_data.target_graph_id,
             description=task_data.description
         )
@@ -678,22 +680,30 @@ async def import_graph_data(graph_id: str):
         if not graph:
             raise HTTPException(status_code=404, detail="图谱不存在")
         
-        # 读取现有的实体和关系数据
+        # 🆕 根据图谱名称获取对应的数据目录
         import os
-        import config
         from core.utils import load_json
+        import config
+        from config import get_graph_data_dirs
+        
+        graph_name = graph.get('name')
+        if not graph_name:
+            raise HTTPException(status_code=400, detail="图谱名称不能为空")
+        
+        # 获取图谱特定的数据目录
+        graph_dirs = get_graph_data_dirs(graph_name)
         
         # 读取消歧后的实体数据
-        disambig_file_path = os.path.join(config.NER_PRO_OUTPUT_DIR, "all_entities_disambiguated.json")
+        disambig_file_path = os.path.join(graph_dirs["NER_PRO_OUTPUT_DIR"], "all_entities_disambiguated.json")
         if not os.path.exists(disambig_file_path):
-            raise HTTPException(status_code=404, detail="未找到实体数据文件，请先运行知识图谱构建流程")
+            raise HTTPException(status_code=404, detail=f"未找到图谱 '{graph_name}' 的实体数据文件，请先运行知识图谱构建流程")
         
         entities_raw_data = load_json(disambig_file_path)
         
         # 读取关系数据
-        relations_file_path = os.path.join(config.RE_OUTPUT_DIR, "all_relations.json")
+        relations_file_path = os.path.join(graph_dirs["RE_OUTPUT_DIR"], "all_relations.json")
         if not os.path.exists(relations_file_path):
-            raise HTTPException(status_code=404, detail="未找到关系数据文件，请先运行知识图谱构建流程")
+            raise HTTPException(status_code=404, detail=f"未找到图谱 '{graph_name}' 的关系数据文件，请先运行知识图谱构建流程")
         
         relations_raw_data = load_json(relations_file_path)
         
@@ -765,7 +775,6 @@ async def process_document(
         result = await kg_builder.process_document(
             file_path=file_path,
             filename=filename,
-            build_mode="append",
             target_graph_id=target_graph_id,
             progress_callback=lambda progress, message: update_task_progress(task_id, progress, message)
         )
