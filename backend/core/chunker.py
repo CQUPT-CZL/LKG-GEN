@@ -1,5 +1,8 @@
 import os
-from . import config
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import config
 from .utils import save_json, load_text
 
 def run_chunk_on_file(input_filepath):

@@ -1,7 +1,10 @@
 import os
 import json
 from openai import OpenAI
-from . import config
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import config
 
 # 初始化大模型客户端
 client = OpenAI(

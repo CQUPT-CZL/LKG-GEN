@@ -10,7 +10,7 @@ OPENAI_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1" # 或者�
 # 使用os.path.join确保跨平台兼容性
 
 # 获取backend目录的绝对路径
-BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(BACKEND_DIR)  # 项目根目录
 DATA_DIR = os.path.join(BASE_DIR, "data")
 PROMPTS_DIR = os.path.join(BACKEND_DIR, "prompts")

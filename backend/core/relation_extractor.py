@@ -1,7 +1,10 @@
 import os
 import json
 from collections import defaultdict
-from . import config
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import config
 from .utils import call_llm, load_json, save_json, load_prompt
 
 def create_chunk_to_entities_map(disambiguated_entities: list):

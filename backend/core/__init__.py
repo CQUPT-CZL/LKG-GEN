@@ -1,6 +1,9 @@
 """知识图谱构建核心模块"""
 
-from .config import *
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from config import *
 from .utils import *
 from .chunker import run_chunk_on_file, process_all_files as process_all_chunk_files
 from .ner_processor import run_ner_on_file, process_all_files as process_all_ner_files

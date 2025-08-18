@@ -33,8 +33,9 @@ app.add_middleware(
 import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir = os.path.join(project_root, "data")
+print(data_dir)
 data_manager = DataManager(data_dir)
-kg_builder = KnowledgeGraphBuilder()
+kg_builder = KnowledgeGraphBuilder(data_manager)
 
 # 数据模型定义
 class GraphCreateRequest(BaseModel):
@@ -679,7 +680,8 @@ async def import_graph_data(graph_id: str):
         
         # 读取现有的实体和关系数据
         import os
-        from core import config, load_json
+        import config
+        from core.utils import load_json
         
         # 读取消歧后的实体数据
         disambig_file_path = os.path.join(config.NER_PRO_OUTPUT_DIR, "all_entities_disambiguated.json")

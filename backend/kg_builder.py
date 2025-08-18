@@ -24,8 +24,8 @@ from data_manager import DataManager
 class KnowledgeGraphBuilder:
     """知识图谱构建器 - 整合现有的Python脚本"""
     
-    def __init__(self):
-        self.data_manager = DataManager()
+    def __init__(self, data_manager=None):
+        self.data_manager = data_manager or DataManager()
         
         # 确保必要的目录存在
         self.temp_dir = Path("temp")
