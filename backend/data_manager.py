@@ -14,8 +14,8 @@ class DataManager:
         
         # 创建各个数据目录
         self.graphs_dir = self.data_dir / "graphs"
-        self.entities_dir = self.data_dir / "entities"
-        self.relations_dir = self.data_dir / "relations"
+        self.entities_dir = self.data_dir / "entities"  # 全局实体目录，按图谱分组
+        self.relations_dir = self.data_dir / "relations"  # 全局关系目录，按图谱分组
         self.tasks_dir = self.data_dir / "tasks"
         self.categories_dir = self.data_dir / "categories"  # 新增：分类目录
         
@@ -51,14 +51,54 @@ class DataManager:
         file_path = self.graphs_dir / f"{graph_id}.json"
         self._save_json(graph_data, file_path)
     
-    def save_entity(self, entity_id: str, entity_data: Dict[str, Any]):
-        """保存实体数据"""
-        file_path = self.entities_dir / f"{entity_id}.json"
+    def _get_graph_name(self, graph_id: str) -> str:
+        """获取图谱名称（避免循环调用）"""
+        file_path = self.graphs_dir / f"{graph_id}.json"
+        graph_data = self._load_json(file_path)
+        
+        if not graph_data:
+            raise ValueError(f"图谱 {graph_id} 不存在")
+        
+        graph_name = graph_data.get('name')
+        if not graph_name:
+            raise ValueError(f"图谱 {graph_id} 没有名称")
+        
+        return graph_name
+    
+    def _get_graph_entities_dir(self, graph_id: str) -> Path:
+        """获取指定图谱的实体目录 - 使用ner_output目录"""
+        graph_name = self._get_graph_name(graph_id)
+        ner_output_dir = self.data_dir / "ner_output" / graph_name
+        ner_output_dir.mkdir(parents=True, exist_ok=True)
+        return ner_output_dir
+    
+    def _get_graph_relations_dir(self, graph_id: str) -> Path:
+        """获取指定图谱的关系目录 - 使用re_output目录"""
+        graph_name = self._get_graph_name(graph_id)
+        re_output_dir = self.data_dir / "re_output" / graph_name
+        re_output_dir.mkdir(parents=True, exist_ok=True)
+        return re_output_dir
+    
+    def save_entity(self, entity_id: str, entity_data: Dict[str, Any], graph_id: str = None):
+        """保存实体数据到指定图谱目录"""
+        if graph_id:
+            # 保存到图谱特定目录
+            graph_entities_dir = self._get_graph_entities_dir(graph_id)
+            file_path = graph_entities_dir / f"{entity_id}.json"
+        else:
+            # 兼容旧版本，保存到全局目录
+            file_path = self.entities_dir / f"{entity_id}.json"
         self._save_json(entity_data, file_path)
     
-    def save_relation(self, relation_id: str, relation_data: Dict[str, Any]):
-        """保存关系数据"""
-        file_path = self.relations_dir / f"{relation_id}.json"
+    def save_relation(self, relation_id: str, relation_data: Dict[str, Any], graph_id: str = None):
+        """保存关系数据到指定图谱目录"""
+        if graph_id:
+            # 保存到图谱特定目录
+            graph_relations_dir = self._get_graph_relations_dir(graph_id)
+            file_path = graph_relations_dir / f"{relation_id}.json"
+        else:
+            # 兼容旧版本，保存到全局目录
+            file_path = self.relations_dir / f"{relation_id}.json"
         self._save_json(relation_data, file_path)
     
     # 图谱管理
@@ -458,28 +498,117 @@ class DataManager:
             "aliases": []
         }
         
-        file_path = self.entities_dir / f"{entity_id}.json"
-        self._save_json(entity_data, file_path)
+        # 使用新的图谱特定存储逻辑
+        self.save_entity(entity_id, entity_data, graph_id)
         return entity_data
     
     def get_entities(self, graph_id: str = None) -> List[Dict[str, Any]]:
         """获取实体列表"""
-        entities = self._get_all_files_data(self.entities_dir)
-        
         if graph_id:
-            entities = [e for e in entities if e.get("graph_id") == graph_id]
+            # 从图谱特定目录读取
+            graph_entities_dir = self._get_graph_entities_dir(graph_id)
+            entities = []
+            
+            # 读取 ner_output 目录中的实体文件
+            for json_file in graph_entities_dir.glob("*.json"):
+                if json_file.name != "all_entities_disambiguated.json":  # 跳过消歧文件
+                    entity_data = self._load_json(json_file)
+                    if isinstance(entity_data, list):
+                        # 转换 NER 输出格式为标准实体格式
+                        for entity in entity_data:
+                            entities.append({
+                                "id": entity.get("entity_id", str(uuid.uuid4())),
+                                "name": entity.get("entity_text", entity.get("name", "")),
+                                "type": entity.get("entity_type", entity.get("type", "")),
+                                "description": entity.get("entity_description", entity.get("description", "")),
+                                "graph_id": graph_id,
+                                "frequency": len(entity.get("chunk_id", [])) if entity.get("chunk_id") else 1,
+                                "created_at": datetime.now().isoformat(),
+                                "updated_at": datetime.now().isoformat(),
+                                "aliases": entity.get("aliases", [])
+                            })
+                    elif isinstance(entity_data, dict):
+                        # 单个实体文件
+                        entities.append(entity_data)
+            
+            # 然后读取其他单独的实体文件（向后兼容）
+            other_entities = self._get_all_files_data(graph_entities_dir)
+            entities.extend(other_entities)
+            
+            # 同时也从全局目录中查找该图谱的实体（向后兼容）
+            global_entities = self._get_all_files_data(self.entities_dir)
+            global_entities = [e for e in global_entities if e.get("graph_id") == graph_id]
+            entities.extend(global_entities)
+        else:
+            # 获取所有实体：全局目录 + 所有图谱目录
+            entities = self._get_all_files_data(self.entities_dir)
+            # 遍历所有图谱子目录
+            for graph_dir in self.entities_dir.iterdir():
+                if graph_dir.is_dir():
+                    # 读取消歧文件
+                    disambig_file = graph_dir / "all_entities_disambiguated.json"
+                    if disambig_file.exists():
+                        disambig_data = self._load_json(disambig_file)
+                        if isinstance(disambig_data, list):
+                            for entity in disambig_data:
+                                entities.append({
+                                    "id": entity.get("entity_id", str(uuid.uuid4())),
+                                    "name": entity.get("entity_text", entity.get("name", "")),
+                                    "type": entity.get("entity_type", entity.get("type", "")),
+                                    "description": entity.get("entity_description", entity.get("description", "")),
+                                    "graph_id": graph_dir.name,
+                                    "frequency": len(entity.get("chunk_id", [])),
+                                    "created_at": datetime.now().isoformat(),
+                                    "updated_at": datetime.now().isoformat(),
+                                    "aliases": entity.get("aliases", [])
+                                })
+                    # 读取其他单独文件
+                    graph_entities = self._get_all_files_data(graph_dir)
+                    entities.extend(graph_entities)
         
-        return sorted(entities, key=lambda x: x["created_at"], reverse=True)
+        # 过滤掉非字典对象，确保排序安全
+        valid_entities = [e for e in entities if isinstance(e, dict)]
+        return sorted(valid_entities, key=lambda x: x.get("created_at", ""), reverse=True)
     
-    def get_entity(self, entity_id: str) -> Optional[Dict[str, Any]]:
+    def get_entity(self, entity_id: str, graph_id: str = None) -> Optional[Dict[str, Any]]:
         """获取指定实体"""
+        if graph_id:
+            # 先从图谱特定目录查找
+            graph_entities_dir = self._get_graph_entities_dir(graph_id)
+            file_path = graph_entities_dir / f"{entity_id}.json"
+            if file_path.exists():
+                return self._load_json(file_path)
+        
+        # 从全局目录查找（向后兼容）
         file_path = self.entities_dir / f"{entity_id}.json"
-        return self._load_json(file_path) if file_path.exists() else None
+        if file_path.exists():
+            return self._load_json(file_path)
+        
+        # 如果没有指定graph_id，遍历所有图谱目录查找
+        if not graph_id:
+            for graph_dir in self.entities_dir.iterdir():
+                if graph_dir.is_dir():
+                    file_path = graph_dir / f"{entity_id}.json"
+                    if file_path.exists():
+                        return self._load_json(file_path)
+        
+        return None
     
     def update_entity(self, entity_id: str, name: str, entity_type: str, description: str = "") -> Optional[Dict[str, Any]]:
         """更新实体"""
+        # 首先尝试从全局目录查找
         file_path = self.entities_dir / f"{entity_id}.json"
-        entity_data = self._load_json(file_path)
+        entity_data = self._load_json(file_path) if file_path.exists() else None
+        
+        # 如果全局目录没找到，遍历图谱子目录查找
+        if not entity_data:
+            for graph_dir in self.entities_dir.iterdir():
+                if graph_dir.is_dir():
+                    graph_file_path = graph_dir / f"{entity_id}.json"
+                    if graph_file_path.exists():
+                        entity_data = self._load_json(graph_file_path)
+                        file_path = graph_file_path
+                        break
         
         if entity_data:
             entity_data["name"] = name
@@ -493,17 +622,28 @@ class DataManager:
     
     def delete_entity(self, entity_id: str) -> bool:
         """删除实体"""
+        # 首先尝试从全局目录删除
         file_path = self.entities_dir / f"{entity_id}.json"
+        found = False
         
         if file_path.exists():
+            file_path.unlink()
+            found = True
+        
+        # 遍历图谱子目录查找并删除
+        for graph_dir in self.entities_dir.iterdir():
+            if graph_dir.is_dir():
+                graph_file_path = graph_dir / f"{entity_id}.json"
+                if graph_file_path.exists():
+                    graph_file_path.unlink()
+                    found = True
+        
+        if found:
             # 删除相关关系
             relations = self.get_relations()
             for relation in relations:
                 if relation["source_entity_id"] == entity_id or relation["target_entity_id"] == entity_id:
                     self.delete_relation(relation["id"])
-            
-            # 删除实体文件
-            file_path.unlink()
             return True
         
         return False
@@ -526,36 +666,121 @@ class DataManager:
             "updated_at": datetime.now().isoformat()
         }
         
-        file_path = self.relations_dir / f"{relation_id}.json"
-        self._save_json(relation_data, file_path)
+        # 使用新的图谱特定存储逻辑
+        self.save_relation(relation_id, relation_data, graph_id)
         return relation_data
     
     def get_relations(self, graph_id: str = None) -> List[Dict[str, Any]]:
         """获取关系列表"""
-        relations = self._get_all_files_data(self.relations_dir)
-        
         if graph_id:
-            relations = [r for r in relations if r.get("graph_id") == graph_id]
+            # 从图谱特定目录读取
+            graph_relations_dir = self._get_graph_relations_dir(graph_id)
+            relations = []
+            
+            # 读取 re_output 目录中的关系文件
+            for json_file in graph_relations_dir.glob("*.json"):
+                if json_file.name != "all_relations_disambiguated.json":  # 跳过消歧文件
+                    relation_data = self._load_json(json_file)
+                    if isinstance(relation_data, list):
+                        # 转换 RE 输出格式为标准关系格式
+                        for relation in relation_data:
+                            relations.append({
+                                "id": relation.get("relation_id", str(uuid.uuid4())),
+                                "relation_type": relation.get("relation", relation.get("type", "")),
+                                "description": relation.get("relation_description", relation.get("description", "")),
+                                "source_entity_id": relation.get("head", ""),
+                                "target_entity_id": relation.get("tail", ""),
+                                "graph_id": graph_id,
+                                "confidence": 1.0,
+                                "frequency": len(relation.get("source_chunk_id", [])) if relation.get("source_chunk_id") else 1,
+                                "created_at": datetime.now().isoformat(),
+                                "updated_at": datetime.now().isoformat()
+                            })
+                    elif isinstance(relation_data, dict):
+                        # 单个关系文件
+                        relations.append(relation_data)
+            
+            # 然后读取其他单独的关系文件（向后兼容）
+            other_relations = self._get_all_files_data(graph_relations_dir)
+            relations.extend(other_relations)
+            
+            # 同时也从全局目录中查找该图谱的关系（向后兼容）
+            global_relations = self._get_all_files_data(self.relations_dir)
+            global_relations = [r for r in global_relations if r.get("graph_id") == graph_id]
+            relations.extend(global_relations)
+        else:
+            # 获取所有关系：全局目录 + 所有图谱目录
+            relations = self._get_all_files_data(self.relations_dir)
+            # 遍历所有图谱子目录
+            for graph_dir in self.relations_dir.iterdir():
+                if graph_dir.is_dir():
+                    # 读取消歧文件
+                    disambig_file = graph_dir / "all_relations_disambiguated.json"
+                    if disambig_file.exists():
+                        disambig_data = self._load_json(disambig_file)
+                        if isinstance(disambig_data, list):
+                            for relation in disambig_data:
+                                relations.append({
+                                    "id": relation.get("relation_id", str(uuid.uuid4())),
+                                    "relation_type": relation.get("relation_type", relation.get("type", "")),
+                                    "description": relation.get("relation_description", relation.get("description", "")),
+                                    "source_entity_id": relation.get("source_entity_id", ""),
+                                    "target_entity_id": relation.get("target_entity_id", ""),
+                                    "graph_id": graph_dir.name,
+                                    "confidence": 1.0,
+                                    "frequency": len(relation.get("chunk_id", [])),
+                                    "created_at": datetime.now().isoformat(),
+                                    "updated_at": datetime.now().isoformat()
+                                })
+                    # 读取其他单独文件
+                    graph_relations = self._get_all_files_data(graph_dir)
+                    relations.extend(graph_relations)
+        
+        # 过滤掉非字典对象，确保处理安全
+        valid_relations = [r for r in relations if isinstance(r, dict)]
         
         # 添加实体名称信息
-        for relation in relations:
-            source_entity = self.get_entity(relation["source_entity_id"])
-            target_entity = self.get_entity(relation["target_entity_id"])
+        for relation in valid_relations:
+            # 如果source_entity_id和target_entity_id存储的是实体名称，需要先找到对应的实体ID
+            source_entity_name = relation["source_entity_id"]
+            target_entity_name = relation["target_entity_id"]
             
-            relation["source_entity_name"] = source_entity["name"] if source_entity else "未知实体"
-            relation["target_entity_name"] = target_entity["name"] if target_entity else "未知实体"
+            # 从当前图谱的实体中查找匹配的实体
+            entities = self.get_entities(graph_id) if graph_id else self.get_entities()
+            
+            source_entity = None
+            target_entity = None
+            
+            for entity in entities:
+                if entity["name"] == source_entity_name:
+                    source_entity = entity
+                if entity["name"] == target_entity_name:
+                    target_entity = entity
+            
+            relation["source_entity_name"] = source_entity["name"] if source_entity else source_entity_name
+            relation["target_entity_name"] = target_entity["name"] if target_entity else target_entity_name
         
-        return sorted(relations, key=lambda x: x["created_at"], reverse=True)
+        return sorted(valid_relations, key=lambda x: x.get("created_at", ""), reverse=True)
     
     def delete_relation(self, relation_id: str) -> bool:
         """删除关系"""
+        # 首先尝试从全局目录删除
         file_path = self.relations_dir / f"{relation_id}.json"
+        found = False
         
         if file_path.exists():
             file_path.unlink()
-            return True
+            found = True
         
-        return False
+        # 遍历图谱子目录查找并删除
+        for graph_dir in self.relations_dir.iterdir():
+            if graph_dir.is_dir():
+                graph_file_path = graph_dir / f"{relation_id}.json"
+                if graph_file_path.exists():
+                    graph_file_path.unlink()
+                    found = True
+        
+        return found
     
     # 可视化数据
     def get_graph_visualization_data(self, graph_id: str) -> Optional[Dict[str, Any]]:
@@ -789,9 +1014,50 @@ class DataManager:
             "last_updated": datetime.now().isoformat()
         }
     
+    def _clear_graph_data(self, graph_id: str):
+        """清理指定图谱的所有数据"""
+        print(f"🗑️ DataManager: 清理图谱 {graph_id} 的旧数据...")
+        
+        # 清理图谱特定目录中的实体
+        graph_entities_dir = self._get_graph_entities_dir(graph_id)
+        if graph_entities_dir.exists():
+            for file_path in graph_entities_dir.glob("*.json"):
+                file_path.unlink()
+            print(f"✅ DataManager: 已清理图谱实体目录: {graph_entities_dir}")
+        
+        # 清理图谱特定目录中的关系
+        graph_relations_dir = self._get_graph_relations_dir(graph_id)
+        if graph_relations_dir.exists():
+            for file_path in graph_relations_dir.glob("*.json"):
+                file_path.unlink()
+            print(f"✅ DataManager: 已清理图谱关系目录: {graph_relations_dir}")
+        
+        # 清理全局目录中属于该图谱的数据（向后兼容）
+        entities_to_remove = []
+        for file_path in self.entities_dir.glob("*.json"):
+            if file_path.is_file():
+                entity_data = self._load_json(file_path)
+                if entity_data.get("graph_id") == graph_id:
+                    entities_to_remove.append(file_path)
+        
+        for file_path in entities_to_remove:
+            file_path.unlink()
+            
+        relations_to_remove = []
+        for file_path in self.relations_dir.glob("*.json"):
+            if file_path.is_file():
+                relation_data = self._load_json(file_path)
+                if relation_data.get("graph_id") == graph_id:
+                    relations_to_remove.append(file_path)
+        
+        for file_path in relations_to_remove:
+            file_path.unlink()
+            
+        print(f"🗑️ DataManager: 已清理全局目录中的 {len(entities_to_remove)} 个实体和 {len(relations_to_remove)} 个关系")
+    
     # 批量导入数据
     def import_kg_data(self, graph_id: str, entities_data: List[Dict], relations_data: List[Dict]) -> Dict[str, Any]:
-        """批量导入知识图谱数据"""
+        """批量导入知识图谱数据（附加模式：先清理旧数据，再导入新数据）"""
         imported_entities = []
         imported_relations = []
         entity_id_mapping = {}  # 原始ID到新ID的映射
@@ -799,6 +1065,9 @@ class DataManager:
         print(f"🔄 DataManager: 开始导入数据到图谱 {graph_id}")
         print(f"📊 DataManager: 待导入实体数量: {len(entities_data)}")
         print(f"📊 DataManager: 待导入关系数量: {len(relations_data)}")
+        
+        # 附加模式：先清理旧数据
+        self._clear_graph_data(graph_id)
         
         try:
             # 导入实体

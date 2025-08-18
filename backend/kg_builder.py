@@ -870,44 +870,42 @@ class KnowledgeGraphBuilder:
                 })
             
             if progress_callback:
-                progress_callback(93, f"正在导入 {len(entities_data)} 个实体和 {len(relations_data)} 个关系...")
+                progress_callback(93, f"正在保存 {len(entities_data)} 个实体和 {len(relations_data)} 个关系到图谱目录...")
             
-            # 导入数据到数据管理器
-            print(f"🔄 开始导入数据到图谱 {graph_id}...")
-            print(f"📊 准备导入: {len(entities_data)} 个实体, {len(relations_data)} 个关系")
+            # 清理图谱的旧数据
+            print(f"🔄 开始清理图谱 {graph_id} 的旧数据...")
+            self.data_manager._clear_graph_data(graph_id)
             
-            import_result = self.data_manager.import_kg_data(
-                graph_id=graph_id,
-                entities_data=entities_data,
-                relations_data=relations_data
-            )
+            # 直接将消歧后的数据保存到图谱特定目录
+            print(f"📁 数据已生成在 ner_pro_output/{graph_id} 目录中，无需复制...")
             
-            # 检查导入结果
-            print(f"📋 导入结果: {import_result}")
+            # 直接使用ner_pro_output目录中的数据文件
+            target_entities_file = disambig_file_path  # 直接使用原始消歧文件
+            target_relations_file = relations_file_path  # 直接使用原始关系文件
             
-            if not import_result.get("success", False):
-                error_msg = import_result.get("error", "未知错误")
-                print(f"❌ 数据导入失败: {error_msg}")
-                raise Exception(f"数据导入失败: {error_msg}")
+            print(f"✅ 实体数据位于: {target_entities_file}")
+            print(f"✅ 关系数据位于: {target_relations_file}")
+            print(f"💡 数据管理器将直接从 ner_pro_output 目录读取数据")
             
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
             
-            imported_entities = import_result['imported_entities']
-            imported_relations = import_result['imported_relations']
+            entities_count = len(entities_data)
+            relations_count = len(relations_data)
             
-            print(f"✅ 数据导入成功！实际导入: {imported_entities} 个实体, {imported_relations} 个关系")
+            print(f"✅ 知识图谱构建完成！包含 {entities_count} 个实体和 {relations_count} 个关系")
             
             if progress_callback:
-                progress_callback(100, f"知识图谱构建完成！共导入 {imported_entities} 个实体和 {imported_relations} 个关系")
+                progress_callback(100, f"知识图谱构建完成！包含 {entities_count} 个实体和 {relations_count} 个关系")
             
             return {
                 "success": True,
                 "graph_id": graph_id,
-                "entities_count": imported_entities,
-                "relations_count": imported_relations,
+                "entities_count": entities_count,
+                "relations_count": relations_count,
                 "processing_time": processing_time,
-                "import_details": import_result
+                "entities_file": str(target_entities_file),
+                "relations_file": str(target_relations_file)
             }
             
         except Exception as e:
