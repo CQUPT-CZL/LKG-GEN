@@ -1,3 +1,4 @@
+from functools import cache
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -287,13 +288,16 @@ from fastapi import Form
 async def upload_document(
     background_tasks: BackgroundTasks, 
     file: UploadFile = File(...),
-    target_graph_id: str = Form(...)  # 目标图谱ID（必填）
+    target_graph_id: str = Form(...),  # 目标图谱ID（必填）
+    category_path: Optional[str] = Form(None)  # 实际分类路径（可选，用于二级分类场景）
 ):
+    print(category_path)
     """上传文档并附加到现有知识图谱
     
     Args:
         file: 上传的文档文件
         target_graph_id: 要附加到的图谱ID
+        category_path: 实际的分类路径（用于二级分类场景）
     """
     try:
         # 验证目标图谱是否存在
@@ -348,7 +352,8 @@ async def upload_document(
             task_id, 
             str(file_path), 
             file.filename, 
-            target_graph_id
+            target_graph_id,
+            category_path
         )
         
         return {
@@ -755,7 +760,8 @@ async def process_document(
     task_id: str, 
     file_path: str, 
     filename: str, 
-    target_graph_id: str
+    target_graph_id: str,
+    category_path: Optional[str] = None
 ):
     """后台处理文档的异步任务
     
@@ -764,6 +770,7 @@ async def process_document(
         file_path: 文档文件路径
         filename: 文档文件名
         target_graph_id: 目标图谱ID
+        category_path: 实际的分类路径（用于二级分类场景）
     """
     try:
         # 更新状态：开始处理
@@ -776,6 +783,7 @@ async def process_document(
             file_path=file_path,
             filename=filename,
             target_graph_id=target_graph_id,
+            actual_category_path=category_path,
             progress_callback=lambda progress, message: update_task_progress(task_id, progress, message)
         )
         

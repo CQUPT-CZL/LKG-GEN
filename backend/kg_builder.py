@@ -96,6 +96,7 @@ class KnowledgeGraphBuilder:
     
     async def process_document(self, file_path: str, filename: str, 
                              target_graph_id: str = None,
+                             actual_category_path: str = None,
                              progress_callback: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
         """处理文档并附加到现有知识图谱
         
@@ -103,6 +104,7 @@ class KnowledgeGraphBuilder:
             file_path: 文档文件路径
             filename: 文档文件名
             target_graph_id: 目标图谱ID（可选，如果不指定则创建新图谱）
+            actual_category_path: 实际的分类路径（用于二级分类场景）
             progress_callback: 进度回调函数
         
         Returns:
@@ -117,6 +119,8 @@ class KnowledgeGraphBuilder:
             print(f"🚀 开始处理文档: {filename}")
             print(f"📁 文件路径: {file_path}")
             print(f"🔧 构建模式: 附加到现有图谱")
+            print(f"📂 实际分类路径: {actual_category_path}")
+
             print(f"🎯 目标图谱ID: {target_graph_id}")
             
             # 🆕 获取图谱信息以确定使用的目录
@@ -154,7 +158,7 @@ class KnowledgeGraphBuilder:
             
             # 3. 实体识别
             print("🏷️ 步骤3: 开始实体识别...")
-            ner_result = await self._extract_entities(chunk_result["chunk_file"], graph_id)
+            ner_result = await self._extract_entities(chunk_result["chunk_file"], graph_id, actual_category_path)
             print(f"✅ 实体识别完成，识别出 {ner_result.get('entities_count', 0)} 个实体")
             if progress_callback:
                 progress_callback(45, f"实体识别完成，共识别 {ner_result.get('entities_count', 0)} 个实体")
@@ -387,7 +391,7 @@ class KnowledgeGraphBuilder:
             print(f"📋 错误堆栈: {traceback.format_exc()}")
             raise Exception(f"文档分块失败: {e}")
     
-    async def _extract_entities(self, chunk_file_path: str, graph_id: str = None) -> Dict[str, Any]:
+    async def _extract_entities(self, chunk_file_path: str, graph_id: str = None, actual_category_path: str = None) -> Dict[str, Any]:
         """实体识别处理"""
         try:
             print(f"🔄 开始实体识别，处理文件: {chunk_file_path}")
@@ -411,16 +415,18 @@ class KnowledgeGraphBuilder:
                 print(f"❌ 读取输入文件失败: {e}")
                 raise Exception(f"读取输入文件失败: {e}")
             
-            # 获取图谱对应的分类路径
-            category_path = None
-            if graph_id and self.data_manager:
+            # 🆕 优先使用实际分类路径，如果没有则获取图谱对应的分类路径
+            category_path = actual_category_path
+            if category_path:
+                print(f"📁 使用实际分类路径: {category_path}")
+            elif graph_id and self.data_manager:
                 try:
                     graph = self.data_manager.get_graph(graph_id)
                     if graph and graph.get("category_id"):
                         category = self.data_manager.get_category(graph["category_id"])
                         if category:
                             category_path = category.get("path")
-                            print(f"📁 获取到分类路径: {category_path}")
+                            print(f"📁 获取到图谱分类路径: {category_path}")
                 except Exception as e:
                     print(f"⚠️ 获取分类路径失败: {e}")
             

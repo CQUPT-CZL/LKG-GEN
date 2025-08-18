@@ -527,6 +527,23 @@ class DataManager:
         
         return True
     
+    def _find_top_level_category(self, category_id: str) -> Optional[str]:
+        """查找指定分类的顶级父分类（一级分类）"""
+        current_category = self.get_category(category_id)
+        if not current_category:
+            return None
+        
+        # 如果已经是一级分类，直接返回
+        if current_category["level"] == 1:
+            return category_id
+        
+        # 递归查找父分类，直到找到一级分类
+        parent_id = current_category.get("parent_id")
+        if parent_id and parent_id != "root":
+            return self._find_top_level_category(parent_id)
+        
+        return None
+    
     def _delete_category_only(self, category_id: str) -> bool:
         """仅删除分类本身，不递归删除子分类和图谱（用于避免循环调用）"""
         if category_id == "root":
@@ -638,8 +655,22 @@ class DataManager:
             # 如果是根分类，返回所有图谱（包括所有子分类的图谱）
             return all_graphs
         else:
-            # 如果是具体分类，只返回该分类下的图谱
-            return [graph for graph in all_graphs if graph.get("category_id") == category_id]
+            # 获取当前分类信息
+            current_category = self.get_category(category_id)
+            if not current_category:
+                return []
+            
+            # 🆕 根据分类层级处理图谱查找逻辑
+            if current_category["level"] == 1:
+                # 一级分类：直接返回该分类下的图谱
+                return [graph for graph in all_graphs if graph.get("category_id") == category_id]
+            else:
+                # 二级及以上分类：查找其顶级父分类（一级分类）的图谱
+                top_level_category_id = self._find_top_level_category(category_id)
+                if top_level_category_id:
+                    return [graph for graph in all_graphs if graph.get("category_id") == top_level_category_id]
+                else:
+                    return []
     
     def get_graph(self, graph_id: str) -> Optional[Dict[str, Any]]:
         """获取指定知识图谱"""

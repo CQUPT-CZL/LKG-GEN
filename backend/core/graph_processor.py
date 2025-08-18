@@ -195,7 +195,7 @@ def process_llm_clusters(original_entities: list, clusters: list):
             "entity_description": canonical_entity_template["entity_description"],
             "category_path": list(merged_category_paths),
             "chunk_id": sorted(list(merged_chunk_ids)),
-            "aliases": aliases 
+            "aliases": list(set(aliases))
         }
         final_entities.append(new_entity)
 
@@ -222,6 +222,19 @@ def run_disambiguate_on_all_files():
     # 收集所有文件的实体
     all_entities = []
     processed_files = []
+    
+    # 首先检查是否存在已消歧的实体文件
+    existing_disambiguated_path = os.path.join(config.NER_PRO_OUTPUT_DIR, "all_entities_disambiguated.json")
+    if os.path.exists(existing_disambiguated_path):
+        print(f"📋 发现已存在的消歧结果文件: {existing_disambiguated_path}")
+        existing_entities = load_json(existing_disambiguated_path)
+        if existing_entities:
+            all_entities.extend(existing_entities)
+            print(f"✅ 从已存在的消歧文件加载了 {len(existing_entities)} 个实体")
+        else:
+            print(f"⚠️ 已存在的消歧文件为空")
+    else:
+        print(f"📝 未发现已存在的消歧结果文件，将创建新文件")
     
     # 遍历所有NER输出文件
     for filename in os.listdir(config.NER_OUTPUT_DIR):
