@@ -219,8 +219,8 @@ async def create_graph(request: dict):
             
             # 🆕 为新创建的图谱创建专用数据目录
             import config
-            config.create_graph_directories(name)
-            print(f"📁 已为图谱 '{name}' 创建专用数据目录")
+            config.create_graph_directories(graph_data['id'])
+            print(f"📁 已为图谱 '{graph_data['id']}' 创建专用数据目录")
             
             print("*" * 50)
             return graph_data
@@ -480,6 +480,7 @@ async def get_entities(graph_id: str):
     """获取图谱中的所有实体"""
     try:
         entities = data_manager.get_entities(graph_id)
+        print(entities)
         return entities
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -680,23 +681,22 @@ async def import_graph_data(graph_id: str):
         if not graph:
             raise HTTPException(status_code=404, detail="图谱不存在")
         
-        # 🆕 根据图谱名称获取对应的数据目录
+        # 🆕 根据图谱ID获取对应的数据目录
         import os
         from core.utils import load_json
         import config
         from config import get_graph_data_dirs
         
         graph_name = graph.get('name')
-        if not graph_name:
-            raise HTTPException(status_code=400, detail="图谱名称不能为空")
+        print(f"📊 图谱名称: {graph_name}")
         
-        # 获取图谱特定的数据目录
-        graph_dirs = get_graph_data_dirs(graph_name)
+        # 获取图谱特定的数据目录 - 使用图谱ID而不是图谱名称
+        graph_dirs = get_graph_data_dirs(graph_id)
         
         # 读取消歧后的实体数据
         disambig_file_path = os.path.join(graph_dirs["NER_PRO_OUTPUT_DIR"], "all_entities_disambiguated.json")
         if not os.path.exists(disambig_file_path):
-            raise HTTPException(status_code=404, detail=f"未找到图谱 '{graph_name}' 的实体数据文件，请先运行知识图谱构建流程")
+            raise HTTPException(status_code=404, detail=f"未找到图谱 '{graph_id}' 的实体数据文件，请先运行知识图谱构建流程")
         
         entities_raw_data = load_json(disambig_file_path)
         

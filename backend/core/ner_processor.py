@@ -78,6 +78,7 @@ def process_single_chunk(chunk_id, chunk_text, prompt_template, validation_promp
             for entity in chunk_ner:
                 # 为chunk_id添加文件名前缀，格式：文件名_chunk_id
                 entity['chunk_id'] = [f"{file_prefix}_{chunk_id}"]
+                entity['category_path'] = [f"{file_prefix}_{chunk_id}"]
                 
                 # 验证实体
                 validated_entity = validate_entity_with_llm(entity, chunk_text, validation_prompt_template)

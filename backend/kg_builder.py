@@ -60,13 +60,13 @@ class KnowledgeGraphBuilder:
     
 
     
-    def _get_work_directories(self, graph_name: str) -> Dict[str, str]:
-        """根据图谱名称获取工作目录"""
-        if not graph_name:
-            raise ValueError("图谱名称不能为空")
+    def _get_work_directories(self, graph_id: str) -> Dict[str, str]:
+        """根据图谱ID获取工作目录"""
+        if not graph_id:
+            raise ValueError("图谱ID不能为空")
         
         # 所有图谱都使用图谱特定的子目录
-        return config.get_graph_data_dirs(graph_name)
+        return config.get_graph_data_dirs(graph_id)
     
     def _update_config_paths(self, work_dirs: Dict[str, str]):
         """临时更新config中的路径"""
@@ -120,18 +120,18 @@ class KnowledgeGraphBuilder:
             print(f"🎯 目标图谱ID: {target_graph_id}")
             
             # 🆕 获取图谱信息以确定使用的目录
-            graph_name = None
-            if target_graph_id:
-                graph_info = self.data_manager.get_graph(target_graph_id)
-                if graph_info:
-                    graph_name = graph_info.get('name')
-                    print(f"📊 目标图谱名称: {graph_name}")
+            if not target_graph_id:
+                raise ValueError("目标图谱ID不能为空")
+                
+            graph_info = self.data_manager.get_graph(target_graph_id)
+            if not graph_info:
+                raise ValueError(f"图谱 {target_graph_id} 不存在")
+                
+            graph_name = graph_info.get('name')
+            print(f"📊 目标图谱名称: {graph_name}")
             
-            # 设置工作目录
-            if not graph_name:
-                raise ValueError("无法获取图谱名称，请确保目标图谱存在")
-            
-            work_dirs = self._get_work_directories(graph_name)
+            # 设置工作目录 - 使用图谱ID而不是图谱名称
+            work_dirs = self._get_work_directories(target_graph_id)
             self._update_config_paths(work_dirs)
             print(f"📂 使用数据目录: {work_dirs}")
             
