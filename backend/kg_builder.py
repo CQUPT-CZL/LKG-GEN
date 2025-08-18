@@ -154,7 +154,7 @@ class KnowledgeGraphBuilder:
             
             # 3. 实体识别
             print("🏷️ 步骤3: 开始实体识别...")
-            ner_result = await self._extract_entities(chunk_result["chunk_file"])
+            ner_result = await self._extract_entities(chunk_result["chunk_file"], graph_id)
             print(f"✅ 实体识别完成，识别出 {ner_result.get('entities_count', 0)} 个实体")
             if progress_callback:
                 progress_callback(45, f"实体识别完成，共识别 {ner_result.get('entities_count', 0)} 个实体")
@@ -387,7 +387,7 @@ class KnowledgeGraphBuilder:
             print(f"📋 错误堆栈: {traceback.format_exc()}")
             raise Exception(f"文档分块失败: {e}")
     
-    async def _extract_entities(self, chunk_file_path: str) -> Dict[str, Any]:
+    async def _extract_entities(self, chunk_file_path: str, graph_id: str = None) -> Dict[str, Any]:
         """实体识别处理"""
         try:
             print(f"🔄 开始实体识别，处理文件: {chunk_file_path}")
@@ -411,13 +411,27 @@ class KnowledgeGraphBuilder:
                 print(f"❌ 读取输入文件失败: {e}")
                 raise Exception(f"读取输入文件失败: {e}")
             
+            # 获取图谱对应的分类路径
+            category_path = None
+            if graph_id and self.data_manager:
+                try:
+                    graph = self.data_manager.get_graph(graph_id)
+                    if graph and graph.get("category_id"):
+                        category = self.data_manager.get_category(graph["category_id"])
+                        if category:
+                            category_path = category.get("path")
+                            print(f"📁 获取到分类路径: {category_path}")
+                except Exception as e:
+                    print(f"⚠️ 获取分类路径失败: {e}")
+            
             print("🔄 开始调用NER处理函数...")
             # 调用现有的NER函数
             # 调用step2_ner.py中的run_ner_on_file函数进行实体识别
             # 参数1: chunk_file_path - 分块后的文件路径
             # 参数2: 2 - 使用2个线程进行并行处理
+            # 参数3: category_path - 分类路径
             await asyncio.get_event_loop().run_in_executor(
-                None, run_ner_on_file, chunk_file_path, 2
+                None, run_ner_on_file, chunk_file_path, 2, category_path
             )
             print("✅ NER处理函数调用完成")
             

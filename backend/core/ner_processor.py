@@ -62,7 +62,7 @@ from functools import partial
 # 线程锁，用于保护共享资源
 result_lock = threading.Lock()
 
-def process_single_chunk(chunk_id, chunk_text, prompt_template, validation_prompt_template, file_prefix):
+def process_single_chunk(chunk_id, chunk_text, prompt_template, validation_prompt_template, file_prefix, document_path=None):
     """处理单个chunk的NER任务，包含实体验证"""
     try:
         # 1. 执行NER提取
@@ -78,7 +78,7 @@ def process_single_chunk(chunk_id, chunk_text, prompt_template, validation_promp
             for entity in chunk_ner:
                 # 为chunk_id添加文件名前缀，格式：文件名_chunk_id
                 entity['chunk_id'] = [f"{file_prefix}_{chunk_id}"]
-                entity['category_path'] = [f"{file_prefix}_{chunk_id}"]
+                entity['category_path'] = [document_path] if document_path else [f"{file_prefix}_{chunk_id}"]
                 
                 # 验证实体
                 validated_entity = validate_entity_with_llm(entity, chunk_text, validation_prompt_template)
@@ -100,7 +100,7 @@ def process_single_chunk(chunk_id, chunk_text, prompt_template, validation_promp
         print(f"❌ 处理chunk {chunk_id} 时出错: {e}")
         return []
 
-def run_ner_on_file(chunk_filepath, max_workers=4):
+def run_ner_on_file(chunk_filepath, max_workers=4, document_path=None):
     """对单个分块文件进行命名实体识别（多线程版本，包含实体验证）"""
     print(f"🔄 正在处理分块文件: {chunk_filepath}")
     
@@ -125,7 +125,7 @@ def run_ner_on_file(chunk_filepath, max_workers=4):
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # 提交所有任务
         future_to_chunk = {
-            executor.submit(process_single_chunk, chunk_id, chunk_text, prompt_template, validation_prompt_template, file_prefix): chunk_id
+            executor.submit(process_single_chunk, chunk_id, chunk_text, prompt_template, validation_prompt_template, file_prefix, document_path): chunk_id
             for chunk_id, chunk_text in chunks.items()
         }
         
