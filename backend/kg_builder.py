@@ -639,8 +639,8 @@ class KnowledgeGraphBuilder:
             valid_entity_set = set(entities)
             
             for triple in triples_from_chunk:
-                if len(triple) == 3:
-                    head, relation, tail = triple
+                if len(triple) == 4:
+                    head, relation, tail, description = triple
                     # 检查头实体和尾实体是否都在合法的实体列表中
                     if head in valid_entity_set and tail in valid_entity_set:
                         validated_triples.append(triple)
@@ -649,11 +649,13 @@ class KnowledgeGraphBuilder:
             
             # 为每个三元组添加来源信息
             for triple in validated_triples:
-                if len(triple) == 3:
+                if len(triple) == 4:
+                    head, relation, tail, description = triple
                     extracted_triples.append({
-                        "head": triple[0],
-                        "relation": triple[1],
-                        "tail": triple[2],
+                        "head": head,
+                        "relation": relation,
+                        "tail": tail,
+                        "description": description,
                         "source_chunk_id": chunk_id
                     })
         
@@ -755,10 +757,7 @@ class KnowledgeGraphBuilder:
             entities_str = ", ".join(entities_in_chunk)
             
             # 加载关系类型
-            relation_types = "\n".join([
-                "使用原料", "生产产品", "应用于", "具有性质", "包含成分",
-                "经过工艺", "使用设备", "产生副产品", "影响因素", "测量指标"
-            ])
+            relation_types = "\n".join(config.RELATION_TYPES)
             
             # 构建完整的提示词
             full_prompt = re_prompt.replace("{{CHUNK_TEXT}}", chunk_text).replace("{{ENTITIES_IN_CHUNK}}", entities_str).replace("{{RELATION_TYPES}}", relation_types)
@@ -772,16 +771,16 @@ class KnowledgeGraphBuilder:
                 triples = []
                 for item in response:
                     if isinstance(item, dict) and 'head' in item and 'relation' in item and 'tail' in item:
-                        triples.append([item['head'], item['relation'], item['tail']])
-                    elif isinstance(item, list) and len(item) == 3:
+                        triples.append([item['head'], item['relation'], item['tail'], item['description']])
+                    elif isinstance(item, list) and len(item) == 4:
                         triples.append(item)
             elif isinstance(response, dict) and 'relations' in response:
                 # 如果返回的是包含relations字段的字典
                 triples = []
                 for item in response['relations']:
-                    if isinstance(item, dict) and 'head' in item and 'relation' in item and 'tail' in item:
-                        triples.append([item['head'], item['relation'], item['tail']])
-                    elif isinstance(item, list) and len(item) == 3:
+                    if isinstance(item, dict) and 'head' in item and 'relation' in item and 'tail' in item and 'description' in item:
+                        triples.append([item['head'], item['relation'], item['tail'], item['description']])
+                    elif isinstance(item, list) and len(item) == 4:
                         triples.append(item)
             else:
                 # 其他情况返回空列表
