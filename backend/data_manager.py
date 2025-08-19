@@ -826,7 +826,8 @@ class DataManager:
                                             "frequency": len(entity.get("chunk_id", [])) if entity.get("chunk_id") else 1,
                                             "created_at": datetime.now().isoformat(),
                                             "updated_at": datetime.now().isoformat(),
-                                            "aliases": entity.get("aliases", [])
+                                            "aliases": entity.get("aliases", []),
+                                            "category_path": entity.get("category_path", [])
                                         })
                                     except Exception as e:
                                         print(f"⚠️ 处理消歧实体数据时出错: {e}")
@@ -887,40 +888,44 @@ class DataManager:
                 except Exception as e:
                     print(f"⚠️ 读取全局实体目录时出错: {e}")
                 
-                # 遍历所有图谱子目录
+                # 遍历所有图谱的ner_pro_output目录
                 try:
-                    for graph_dir in self.entities_dir.iterdir():
-                        if graph_dir.is_dir():
-                            try:
-                                # 读取消歧文件
-                                disambig_file = graph_dir / "all_entities_disambiguated.json"
-                                if disambig_file.exists():
-                                    disambig_data = self._load_json(disambig_file)
-                                    if isinstance(disambig_data, list):
-                                        for entity in disambig_data:
-                                            try:
-                                                entities.append({
-                                                    "id": entity.get("entity_id", str(uuid.uuid4())),
-                                                    "name": entity.get("entity_text", entity.get("name", "")),
-                                                    "type": entity.get("entity_type", entity.get("type", "")),
-                                                    "description": entity.get("entity_description", entity.get("description", "")),
-                                                    "graph_id": graph_dir.name,
-                                                    "frequency": len(entity.get("chunk_id", [])),
-                                                    "created_at": datetime.now().isoformat(),
-                                                    "updated_at": datetime.now().isoformat(),
-                                                    "aliases": entity.get("aliases", [])
-                                                })
-                                            except Exception as e:
-                                                print(f"⚠️ 处理消歧实体数据时出错: {e}")
-                                                continue
-                                # 读取其他单独文件
-                                graph_entities = self._get_all_files_data(graph_dir)
-                                entities.extend(graph_entities)
-                            except Exception as e:
-                                print(f"⚠️ 处理图谱目录 {graph_dir} 时出错: {e}")
-                                continue
+                    ner_pro_output_dir = self.data_dir / "ner_pro_output"
+                    if ner_pro_output_dir.exists():
+                        for graph_dir in ner_pro_output_dir.iterdir():
+                            if graph_dir.is_dir():
+                                try:
+                                    # 读取消歧文件
+                                    disambig_file = graph_dir / "all_entities_disambiguated.json"
+                                    if disambig_file.exists():
+                                        disambig_data = self._load_json(disambig_file)
+                                        if isinstance(disambig_data, list):
+                                            for entity in disambig_data:
+                                                try:
+                                                    # 使用entity_text和graph_id生成稳定的ID
+                                                    entity_text = entity.get("entity_text", entity.get("name", ""))
+                                                    stable_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{graph_dir.name}:{entity_text}"))
+                                                    
+                                                    entities.append({
+                                                        "id": stable_id,
+                                                        "name": entity_text,
+                                                        "type": entity.get("entity_type", entity.get("type", "")),
+                                                        "description": entity.get("entity_description", entity.get("description", "")),
+                                                        "graph_id": graph_dir.name,
+                                                        "frequency": len(entity.get("chunk_id", [])),
+                                                        "created_at": datetime.now().isoformat(),
+                                                        "updated_at": datetime.now().isoformat(),
+                                                        "aliases": entity.get("aliases", []),
+                                                        "category_path": entity.get("category_path", ["/root"])
+                                                    })
+                                                except Exception as e:
+                                                    print(f"⚠️ 处理消歧实体数据时出错: {e}")
+                                                    continue
+                                except Exception as e:
+                                    print(f"⚠️ 处理图谱目录 {graph_dir} 时出错: {e}")
+                                    continue
                 except Exception as e:
-                    print(f"⚠️ 遍历实体目录时出错: {e}")
+                    print(f"⚠️ 遍历ner_pro_output目录时出错: {e}")
             
             # 过滤掉非字典对象，确保排序安全
             valid_entities = [e for e in entities if isinstance(e, dict)]
@@ -1401,7 +1406,10 @@ class DataManager:
             }
             
         except Exception as e:
-            raise e
+            print(f"⚠️ 获取分类可视化数据时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def get_category_visualization_data(self, category_id: str) -> Optional[Dict[str, Any]]:
         """获取分类的可视化数据（基于实体路径筛选）"""
@@ -1418,9 +1426,22 @@ class DataManager:
             filtered_entities = []
             
             for entity in all_entities:
-                entity_path = entity.get("category_path", "/root")
-                # 检查实体路径是否匹配当前分类路径
-                if entity_path.startswith(current_path):
+                entity_category_paths = entity.get("category_path", [])
+                
+                # 处理category_path可能是字符串或数组的情况
+                if isinstance(entity_category_paths, str):
+                    entity_category_paths = [entity_category_paths]
+                elif not isinstance(entity_category_paths, list):
+                    entity_category_paths = ["/root"]
+                
+                # 检查实体的任一路径是否匹配当前分类路径（前缀匹配）
+                path_matches = False
+                for path in entity_category_paths:
+                    if path.startswith(current_path):
+                        path_matches = True
+                        break
+                
+                if path_matches:
                     filtered_entities.append(entity)
             
             if not filtered_entities:
@@ -1428,10 +1449,22 @@ class DataManager:
             
             # 获取相关的关系（只包含筛选后实体之间的关系）
             entity_ids = {entity["id"] for entity in filtered_entities}
-            all_relations = self.get_relations()
+            entity_names = {entity["name"] for entity in filtered_entities}
+            
+            # 获取所有相关图谱的关系数据
+            all_relations = []
+            graph_ids = {entity.get("graph_id") for entity in filtered_entities if entity.get("graph_id")}
+            for graph_id in graph_ids:
+                try:
+                    graph_relations = self.get_relations(graph_id)
+                    all_relations.extend(graph_relations)
+                except Exception as e:
+                    print(f"⚠️ 获取图谱 {graph_id} 的关系数据失败: {e}")
+            
             filtered_relations = [
                 relation for relation in all_relations
-                if relation["source_entity_id"] in entity_ids and relation["target_entity_id"] in entity_ids
+                if (relation["source_entity_id"] in entity_ids or relation["source_entity_id"] in entity_names) and 
+                   (relation["target_entity_id"] in entity_ids or relation["target_entity_id"] in entity_names)
             ]
             
             # 实体类型颜色映射
@@ -1493,12 +1526,19 @@ class DataManager:
             nodes = list(unique_entities.values())
             
             # 构建边（需要更新实体ID映射）
-            entity_id_mapping = {entity["id"]: unique_entities[entity["name"]]["id"] for entity in filtered_entities if entity["name"] in unique_entities}
+            # 创建实体ID和名称到去重后实体ID的映射
+            entity_id_mapping = {}
+            entity_name_mapping = {}
+            for entity in filtered_entities:
+                if entity["name"] in unique_entities:
+                    entity_id_mapping[entity["id"]] = unique_entities[entity["name"]]["id"]
+                    entity_name_mapping[entity["name"]] = unique_entities[entity["name"]]["id"]
             
             edges = []
             for relation in filtered_relations:
-                source_id = entity_id_mapping.get(relation["source_entity_id"])
-                target_id = entity_id_mapping.get(relation["target_entity_id"])
+                # 尝试通过ID或名称获取映射后的实体ID
+                source_id = entity_id_mapping.get(relation["source_entity_id"]) or entity_name_mapping.get(relation["source_entity_id"])
+                target_id = entity_id_mapping.get(relation["target_entity_id"]) or entity_name_mapping.get(relation["target_entity_id"])
                 
                 if source_id and target_id and source_id != target_id:  # 避免自环
                     relation_desc = relation.get("description", "无描述")

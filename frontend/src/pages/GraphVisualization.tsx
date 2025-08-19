@@ -494,50 +494,7 @@ const GraphVisualization: React.FC = () => {
                 ))}
               </Card>
               
-              {/* 控制选项 */}
-              <Card size="small" title="⚙️ 显示设置">
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <div>
-                    <Text>物理引擎:</Text>
-                    <Switch 
-                      checked={physics} 
-                      onChange={setPhysics} 
-                      style={{ marginLeft: 8 }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Text>显示标签:</Text>
-                    <Switch 
-                      checked={showLabels} 
-                      onChange={setShowLabels} 
-                      style={{ marginLeft: 8 }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Text>节点大小:</Text>
-                    <Slider
-                      min={10}
-                      max={50}
-                      value={nodeSize}
-                      onChange={setNodeSize}
-                      style={{ marginTop: 8 }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Text>边宽度:</Text>
-                    <Slider
-                      min={1}
-                      max={5}
-                      value={edgeWidth}
-                      onChange={setEdgeWidth}
-                      style={{ marginTop: 8 }}
-                    />
-                  </div>
-                </Space>
-              </Card>
+
             </Space>
           </Col>
         </Row>
