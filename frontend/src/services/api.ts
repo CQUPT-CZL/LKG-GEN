@@ -80,7 +80,6 @@ export interface Relation {
   source_entity_name: string;
   target_entity_name: string;
   relation_type: string;
-  confidence: number;
   description: string;
   graph_id: string;
   created_at: string;
@@ -231,7 +230,6 @@ export const apiService = {
     source_entity_id: string;
     target_entity_id: string;
     relation_type: string;
-    confidence?: number;
     description?: string;
     graph_id: string;
   }): Promise<Relation> => api.post('/relations', data),

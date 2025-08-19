@@ -186,12 +186,7 @@ const RelationManager: React.FC = () => {
     return colors[type] || 'default';
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return '#52c41a';
-    if (confidence >= 0.8) return '#1890ff';
-    if (confidence >= 0.7) return '#fa8c16';
-    return '#f5222d';
-  };
+
 
   const columns: ColumnsType<Relation> = [
     {
@@ -236,24 +231,7 @@ const RelationManager: React.FC = () => {
         <Tag color={getTypeColor(type)}>{type}</Tag>
       )
     },
-    {
-      title: '置信度',
-      dataIndex: 'confidence',
-      key: 'confidence',
-      sorter: (a, b) => a.confidence - b.confidence,
-      render: (confidence) => (
-        <div>
-          <div 
-            style={{ 
-              color: getConfidenceColor(confidence),
-              fontWeight: 'bold'
-            }}
-          >
-            {(confidence * 100).toFixed(1)}%
-          </div>
-        </div>
-      )
-    },
+
 
     {
       title: '所属图谱',
@@ -330,10 +308,6 @@ const RelationManager: React.FC = () => {
   };
 
   const relationTypes = Array.from(new Set(relations.map(r => r.relation_type)));
-  const avgConfidence = relations.length > 0 
-    ? Math.round(relations.reduce((sum, r) => sum + (r.confidence || 0), 0) / relations.length * 100) 
-    : 0;
-  const highConfidenceRelations = relations.filter(r => (r.confidence || 0) >= 0.9).length;
 
   return (
     <div>
@@ -345,8 +319,8 @@ const RelationManager: React.FC = () => {
       </div>
 
       {/* 统计卡片 */}
-      <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
+      <Row gutter={[24, 24]} style={{ marginBottom: 24 }} justify="center">
+        <Col xs={24} sm={12} lg={8}>
           <Card>
             <Statistic
               title="关系总数"
@@ -356,32 +330,12 @@ const RelationManager: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8}>
           <Card>
             <Statistic
               title="关系类型"
               value={relationTypes.length}
               valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="平均置信度"
-              value={avgConfidence}
-              suffix="%"
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="高置信度关系"
-              value={highConfidenceRelations}
-              suffix={`/ ${relations.length}`}
-              valueStyle={{ color: '#fa8c16' }}
             />
           </Card>
         </Col>
@@ -519,21 +473,7 @@ const RelationManager: React.FC = () => {
           </Form.Item>
           
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="confidence"
-                label="置信度"
-                rules={[{ required: true, message: '请输入置信度' }]}
-              >
-                <Input 
-                  type="number" 
-                  min={0} 
-                  max={1} 
-                  step={0.01}
-                  placeholder="0.00 - 1.00" 
-                />
-              </Form.Item>
-            </Col>
+
             <Col span={12}>
               <Form.Item
                 name="graphId"
@@ -569,11 +509,7 @@ const RelationManager: React.FC = () => {
               <Descriptions.Item label="关系类型" span={2}>
                 <Tag color={getTypeColor(viewingRelation.relation_type)}>{viewingRelation.relation_type}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="置信度">
-                <span style={{ color: getConfidenceColor(viewingRelation.confidence), fontWeight: 'bold' }}>
-                  {(viewingRelation.confidence * 100).toFixed(1)}%
-                </span>
-              </Descriptions.Item>
+
               <Descriptions.Item label="源实体">
                 <Text strong>{viewingRelation.source_entity_name || viewingRelation.source_entity_id}</Text>
               </Descriptions.Item>
