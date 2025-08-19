@@ -184,13 +184,16 @@ const RelationManager: React.FC = () => {
 
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
-      '层次关系': 'blue',
-      '依赖关系': 'green',
-      '应用关系': 'orange',
-      '相似关系': 'purple',
-      '因果关系': 'red',
-      '治疗关系': 'cyan',
-      '副作用关系': 'magenta'
+      '具有性能': 'blue',
+      '生产出': 'green',
+      '应用于': 'orange',
+      '使用设备': 'purple',
+      '导致缺陷': 'red',
+      '包含成分': 'cyan',
+      '需要检测': 'magenta',
+      '改善性能': 'gold',
+      '防止缺陷': 'lime',
+      '互相影响': 'volcano'
     };
     return colors[type] || 'default';
   };
@@ -226,13 +229,16 @@ const RelationManager: React.FC = () => {
       dataIndex: 'relation_type',
       key: 'relation_type',
       filters: [
-        { text: '层次关系', value: '层次关系' },
-        { text: '依赖关系', value: '依赖关系' },
-        { text: '应用关系', value: '应用关系' },
-        { text: '相似关系', value: '相似关系' },
-        { text: '因果关系', value: '因果关系' },
-        { text: '治疗关系', value: '治疗关系' },
-        { text: '副作用关系', value: '副作用关系' }
+        { text: '具有性能', value: '具有性能' },
+        { text: '生产出', value: '生产出' },
+        { text: '应用于', value: '应用于' },
+        { text: '使用设备', value: '使用设备' },
+        { text: '导致缺陷', value: '导致缺陷' },
+        { text: '包含成分', value: '包含成分' },
+        { text: '需要检测', value: '需要检测' },
+        { text: '改善性能', value: '改善性能' },
+        { text: '防止缺陷', value: '防止缺陷' },
+        { text: '互相影响', value: '互相影响' }
       ],
       filteredValue: typeFilter ? [typeFilter] : null,
       onFilter: (value, record) => record.relation_type === value,
@@ -437,9 +443,20 @@ const RelationManager: React.FC = () => {
           <Form.Item
               name="relation_type"
               label="关系类型"
-              rules={[{ required: true, message: '请输入关系类型' }]}
+              rules={[{ required: true, message: '请选择关系类型' }]}
             >
-              <Input placeholder="请输入关系类型" />
+              <Select placeholder="请选择关系类型">
+                <Option value="具有性能">具有性能</Option>
+                <Option value="生产出">生产出</Option>
+                <Option value="应用于">应用于</Option>
+                <Option value="使用设备">使用设备</Option>
+                <Option value="导致缺陷">导致缺陷</Option>
+                <Option value="包含成分">包含成分</Option>
+                <Option value="需要检测">需要检测</Option>
+                <Option value="改善性能">改善性能</Option>
+                <Option value="防止缺陷">防止缺陷</Option>
+                <Option value="互相影响">互相影响</Option>
+              </Select>
             </Form.Item>
           
           <Row gutter={16}>

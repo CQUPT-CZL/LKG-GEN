@@ -177,13 +177,17 @@ const EntityManager: React.FC = () => {
 
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
-      '概念': 'blue',
-      '算法': 'green',
-      '模型': 'orange',
-      '疾病': 'red',
-      '药物': 'purple',
-      '人物': 'cyan',
-      '组织': 'magenta'
+      '钢铁材料': 'red',
+      '生产工艺': 'blue',
+      '性能指标': 'green',
+      '应用领域': 'orange',
+      '设备': 'purple',
+      '缺陷': 'volcano',
+      '化学成分': 'cyan',
+      '热处理工艺': 'geekblue',
+      '机械性能': 'lime',
+      '表面处理': 'magenta',
+      '检测方法': 'gold'
     };
     return colors[type] || 'default';
   };
@@ -216,11 +220,17 @@ const EntityManager: React.FC = () => {
       dataIndex: 'type',
       key: 'type',
       filters: [
-        { text: '概念', value: '概念' },
-        { text: '算法', value: '算法' },
-        { text: '模型', value: '模型' },
-        { text: '疾病', value: '疾病' },
-        { text: '药物', value: '药物' }
+        { text: '钢铁材料', value: '钢铁材料' },
+        { text: '生产工艺', value: '生产工艺' },
+        { text: '性能指标', value: '性能指标' },
+        { text: '应用领域', value: '应用领域' },
+        { text: '设备', value: '设备' },
+        { text: '缺陷', value: '缺陷' },
+        { text: '化学成分', value: '化学成分' },
+        { text: '热处理工艺', value: '热处理工艺' },
+        { text: '机械性能', value: '机械性能' },
+        { text: '表面处理', value: '表面处理' },
+        { text: '检测方法', value: '检测方法' }
       ],
       filteredValue: typeFilter ? [typeFilter] : null,
       onFilter: (value, record) => record.type === value,
@@ -474,13 +484,17 @@ const EntityManager: React.FC = () => {
             rules={[{ required: true, message: '请选择实体类型' }]}
           >
             <Select placeholder="请选择实体类型">
-              <Option value="概念">概念</Option>
-              <Option value="算法">算法</Option>
-              <Option value="模型">模型</Option>
-              <Option value="疾病">疾病</Option>
-              <Option value="药物">药物</Option>
-              <Option value="人物">人物</Option>
-              <Option value="组织">组织</Option>
+              <Option value="钢铁材料">钢铁材料</Option>
+              <Option value="生产工艺">生产工艺</Option>
+              <Option value="性能指标">性能指标</Option>
+              <Option value="应用领域">应用领域</Option>
+              <Option value="设备">设备</Option>
+              <Option value="缺陷">缺陷</Option>
+              <Option value="化学成分">化学成分</Option>
+              <Option value="热处理工艺">热处理工艺</Option>
+              <Option value="机械性能">机械性能</Option>
+              <Option value="表面处理">表面处理</Option>
+              <Option value="检测方法">检测方法</Option>
             </Select>
           </Form.Item>
           
