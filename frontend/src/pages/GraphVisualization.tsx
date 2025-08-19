@@ -348,13 +348,47 @@ const GraphVisualization: React.FC = () => {
           link.download = `knowledge-graph-${selectedGraph}.png`;
           link.href = dataURL;
           link.click();
-          message.success('图谱已导出为图片');
-        } else {
-          message.error('无法获取画布，导出失败');
+          message.success('图片导出成功！');
         }
       } catch (error) {
-        message.error('导出失败');
+        console.error('导出失败:', error);
+        message.error('导出失败，请重试');
       }
+    }
+  };
+
+  const handleFullscreen = () => {
+    const container = document.getElementById('network-container');
+    if (!container) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        // 进入全屏
+        if (container.requestFullscreen) {
+          container.requestFullscreen();
+        } else if ((container as any).webkitRequestFullscreen) {
+          (container as any).webkitRequestFullscreen();
+        } else if ((container as any).mozRequestFullScreen) {
+          (container as any).mozRequestFullScreen();
+        } else if ((container as any).msRequestFullscreen) {
+          (container as any).msRequestFullscreen();
+        }
+        message.success('已进入全屏模式，按ESC键退出');
+      } else {
+        // 退出全屏
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          (document as any).msExitFullscreen();
+        }
+      }
+    } catch (error) {
+      console.error('全屏操作失败:', error);
+      message.error('全屏功能不支持或操作失败');
     }
   };
 
@@ -442,7 +476,7 @@ const GraphVisualization: React.FC = () => {
                 <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} />
               </Tooltip>
               <Tooltip title="全屏">
-                <Button icon={<FullscreenOutlined />} />
+                <Button icon={<FullscreenOutlined />} onClick={handleFullscreen} />
               </Tooltip>
               <Tooltip title="导出图片">
                 <Button icon={<DownloadOutlined />} onClick={handleExport} />

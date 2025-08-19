@@ -185,6 +185,50 @@ code {
   overflow: hidden;
 }
 
+/* 全屏模式样式 */
+#network-container:fullscreen {
+  background-color: #ffffff;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#network-container:-webkit-full-screen {
+  background-color: #ffffff;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#network-container:-moz-full-screen {
+  background-color: #ffffff;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#network-container:-ms-fullscreen {
+  background-color: #ffffff;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 全屏模式下的画布样式 */
+#network-container:fullscreen canvas,
+#network-container:-webkit-full-screen canvas,
+#network-container:-moz-full-screen canvas,
+#network-container:-ms-fullscreen canvas {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
 @media (max-width: 768px) {
   .ant-layout-content {
     margin: 16px;
