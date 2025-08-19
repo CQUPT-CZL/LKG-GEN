@@ -188,6 +188,9 @@ def process_llm_clusters(original_entities: list, clusters: list):
                     merged_category_paths.update(entity_obj["category_path"])
                 processed_texts.add(alias)
         
+        # 过滤掉与规范名称相同的别名
+        filtered_aliases = [alias for alias in aliases if alias != canonical_name]
+        
         # 创建合并后的新实体
         new_entity = {
             "entity_text": canonical_name,
@@ -195,7 +198,7 @@ def process_llm_clusters(original_entities: list, clusters: list):
             "entity_description": canonical_entity_template["entity_description"],
             "category_path": list(merged_category_paths),
             "chunk_id": sorted(list(merged_chunk_ids)),
-            "aliases": list(set(aliases))
+            "aliases": filtered_aliases if filtered_aliases else []  # 如果过滤后为空，返回空列表
         }
         final_entities.append(new_entity)
 

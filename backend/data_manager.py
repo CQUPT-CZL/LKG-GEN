@@ -1493,6 +1493,7 @@ class DataManager:
             
             # 去重：对于同名实体，只保留一个，但合并其属性
             unique_entities = {}
+            node_counter = 0  # 用于生成唯一节点ID
             for entity in filtered_entities:
                 name = entity["name"]
                 if name not in unique_entities:
@@ -1504,8 +1505,12 @@ class DataManager:
                     entity_desc = entity.get("description", "无描述")
                     color = type_colors.get(entity_type, "#BDC3C7")
                     
+                    # 生成唯一的节点ID，避免跨图谱的ID冲突
+                    unique_node_id = f"node_{category_id}_{node_counter}_{entity['id']}"
+                    node_counter += 1
+                    
                     unique_entities[name] = {
-                        "id": entity["id"],
+                        "id": unique_node_id,
                         "label": name,
                         "title": f"类型: {entity_type}\n描述: {entity_desc}\n路径: {entity.get('category_path', '/root')}\n来源图谱: {graph_name}\n出现次数: {entity_name_count[name]}",
                         "color": color,
@@ -1535,6 +1540,7 @@ class DataManager:
                     entity_name_mapping[entity["name"]] = unique_entities[entity["name"]]["id"]
             
             edges = []
+            edge_counter = 0  # 用于生成唯一边ID
             for relation in filtered_relations:
                 # 尝试通过ID或名称获取映射后的实体ID
                 source_id = entity_id_mapping.get(relation["source_entity_id"]) or entity_name_mapping.get(relation["source_entity_id"])
@@ -1542,8 +1548,12 @@ class DataManager:
                 
                 if source_id and target_id and source_id != target_id:  # 避免自环
                     relation_desc = relation.get("description", "无描述")
+                    # 生成唯一的边ID，避免跨图谱的ID冲突
+                    unique_edge_id = f"edge_{category_id}_{edge_counter}_{relation['id']}"
+                    edge_counter += 1
+                    
                     edges.append({
-                        "id": relation["id"],
+                        "id": unique_edge_id,
                         "from": source_id,
                         "to": target_id,
                         "label": relation["relation_type"],
