@@ -170,7 +170,7 @@ const GraphBuilder: React.FC = () => {
     
     const buildNode = (node: Category): any => {
       return {
-        title: `${node.name} (${node.graph_ids?.length || 0})`,
+        title: node.name,
         value: node.id,
         key: node.id,
         children: node.children?.map(child => buildNode(child)) || []
@@ -584,7 +584,7 @@ const GraphBuilder: React.FC = () => {
                        >
                          {availableGraphs.map(graph => (
                            <Option key={graph.id} value={graph.id}>
-                             {graph.name} ({graph.entity_count || 0} 实体, {graph.relation_count || 0} 关系)
+                             {graph.name}
                            </Option>
                          ))}
                        </Select>

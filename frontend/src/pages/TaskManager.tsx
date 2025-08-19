@@ -391,7 +391,7 @@ const TaskManager: React.FC = () => {
                   <Select placeholder="请选择要扩展的图谱">
                     {availableGraphs.map(graph => (
                       <Option key={graph.id} value={graph.id}>
-                        {graph.name} ({graph.entity_count} 实体)
+                        {graph.name}
                       </Option>
                     ))}
                   </Select>

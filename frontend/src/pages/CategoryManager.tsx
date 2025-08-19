@@ -85,13 +85,14 @@ const CategoryManager: React.FC = () => {
       title: (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Space>
-            {category.level === 0 ? (
+            {category.level === 1 ? (
+              <DatabaseOutlined style={{ color: '#722ed1' }} />
+            ) : category.level === 0 ? (
               <FolderOpenOutlined style={{ color: '#1890ff' }} />
             ) : (
               <FolderOutlined style={{ color: '#52c41a' }} />
             )}
             <Text strong={category.level === 0}>{category.name}</Text>
-            <Tag color="blue">{category.graph_ids?.length || 0}</Tag>
           </Space>
           <Space size="small">
             <Tooltip title={category.level === 0 ? "添加图谱" : "添加子分类"}>

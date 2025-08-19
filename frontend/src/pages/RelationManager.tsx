@@ -77,14 +77,23 @@ const RelationManager: React.FC = () => {
       // 如果有选中的图谱，加载该图谱的关系
       if (graphFilter) {
         const relationList = await apiService.getRelations(graphFilter);
-        setRelations(relationList);
+        const selectedGraph = graphs.find(g => g.id === graphFilter);
+        const relationsWithGraphName = relationList.map(relation => ({
+          ...relation,
+          graphName: selectedGraph?.name || '未知图谱'
+        }));
+        setRelations(relationsWithGraphName);
       } else {
         // 否则加载所有图谱的关系
         const allRelations: Relation[] = [];
         for (const graph of graphs) {
           try {
             const relationList = await apiService.getRelations(graph.id);
-            allRelations.push(...relationList);
+            const relationsWithGraphName = relationList.map(relation => ({
+              ...relation,
+              graphName: graph.name
+            }));
+            allRelations.push(...relationsWithGraphName);
           } catch (error) {
             console.error(`加载图谱 ${graph.name} 的关系失败:`, error);
           }
@@ -256,12 +265,7 @@ const RelationManager: React.FC = () => {
         </Tooltip>
       )
     },
-    {
-      title: '更新时间',
-      dataIndex: 'updated_at',
-      key: 'updated_at',
-      sorter: (a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
-    },
+
     {
       title: '操作',
       key: 'action',
@@ -525,10 +529,16 @@ const RelationManager: React.FC = () => {
                 </Descriptions.Item>
               )}
               <Descriptions.Item label="创建时间">
-                {viewingRelation.created_at}
-              </Descriptions.Item>
-              <Descriptions.Item label="更新时间">
-                {viewingRelation.updated_at}
+                {(() => {
+                  const date = new Date(viewingRelation.created_at);
+                  return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                })()}
               </Descriptions.Item>
             </Descriptions>
             

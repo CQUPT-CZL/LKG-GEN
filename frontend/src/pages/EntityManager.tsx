@@ -267,12 +267,7 @@ const EntityManager: React.FC = () => {
         </Tooltip>
       )
     },
-    {
-      title: '更新时间',
-      dataIndex: 'updated_at',
-      key: 'updated_at',
-      sorter: (a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
-    },
+
     {
       title: '操作',
       key: 'action',
@@ -570,10 +565,16 @@ const EntityManager: React.FC = () => {
                 </Descriptions.Item>
               )}
               <Descriptions.Item label="创建时间">
-                {viewingEntity.created_at}
-              </Descriptions.Item>
-              <Descriptions.Item label="更新时间">
-                {viewingEntity.updated_at}
+                {(() => {
+                  const date = new Date(viewingEntity.created_at);
+                  return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                })()}
               </Descriptions.Item>
             </Descriptions>
             
