@@ -248,11 +248,10 @@ const EntityManager: React.FC = () => {
         const graph = graphs.find(g => g.id === graphId);
         return graph ? graph.name : graphId;
       },
-      filters: [
-        { text: 'AI技术图谱', value: 'AI技术图谱' },
-        { text: '医学文献图谱', value: '医学文献图谱' },
-        { text: '法律条文图谱', value: '法律条文图谱' }
-      ],
+      filters: graphs.map(graph => ({
+        text: graph.name,
+        value: graph.id
+      })),
       filteredValue: graphFilter ? [graphFilter] : null,
       onFilter: (value, record) => record.graph_id === value
     },

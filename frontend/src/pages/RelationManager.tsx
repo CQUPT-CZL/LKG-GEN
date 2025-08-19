@@ -246,11 +246,10 @@ const RelationManager: React.FC = () => {
       title: '所属图谱',
       dataIndex: 'graphName',
       key: 'graphName',
-      filters: [
-        { text: 'AI技术图谱', value: 'AI技术图谱' },
-        { text: '医学文献图谱', value: '医学文献图谱' },
-        { text: '法律条文图谱', value: '法律条文图谱' }
-      ],
+      filters: graphs.map(graph => ({
+        text: graph.name,
+        value: graph.id
+      })),
       filteredValue: graphFilter ? [graphFilter] : null,
       onFilter: (value, record) => record.graph_id === value
     },
@@ -393,11 +392,9 @@ const RelationManager: React.FC = () => {
               allowClear
               style={{ width: 150 }}
               onChange={(value) => {
-                setGraphFilter(value);
+                setGraphFilter(value || '');
                 // 当图谱筛选改变时，重新加载关系
-                if (value) {
-                  loadRelations();
-                }
+                setTimeout(() => loadRelations(), 100);
               }}
             >
               {graphs.map(graph => (
