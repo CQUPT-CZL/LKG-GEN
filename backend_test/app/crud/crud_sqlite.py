@@ -80,3 +80,15 @@ def update_document_status(db: Session, document_id: int, status: sqlite_models.
         db.refresh(document)
         return document
     return None
+    
+
+def create_source_document(db: Session, title: str, content: str) -> sqlite_models.SourceDocument:
+    """在SQLite中创建一条新的源文档记录"""
+    db_document = sqlite_models.SourceDocument(
+        filename=title, # 使用资源的标题作为文件名
+        content=content
+    )
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+    return db_document

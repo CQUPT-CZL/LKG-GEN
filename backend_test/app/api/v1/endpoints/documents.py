@@ -2,7 +2,9 @@
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
+from fastapi import BackgroundTasks
 from typing import List
+from neo4j import Driver
 from app.api import deps
 from app.services import document_service
 from app.schemas import document as document_schemas
@@ -87,3 +89,31 @@ def delete_document(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除文档失败: {e}")
+
+
+
+@router.post("/resources", response_model=document_schemas.Resource)
+def create_resource(
+    *,
+    db: Session = Depends(deps.get_db),
+    driver: Driver = Depends(deps.get_neo4j_driver),
+    resource_in: document_schemas.ResourceCreate,
+    background_tasks: BackgroundTasks
+):
+    """
+    创建一个新的资源（论文、书籍、网页等）。
+    
+    这个接口会处理所有必要的数据库操作，并触发后台知识抽取。
+    """
+    try:
+        resource_node = document_service.create_new_resource(
+            driver=driver,
+            db=db,
+            resource=resource_in,
+            background_tasks=background_tasks
+        )
+        return resource_node
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建资源失败: {e}")

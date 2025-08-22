@@ -2,6 +2,7 @@
 
 from neo4j import Driver
 from app.schemas.graph import GraphCreate, CategoryCreate
+from app.schemas.document import ResourceCreate # 导入新schema
 import uuid
 
 def create_knowledge_graph(driver: Driver, graph: GraphCreate) -> dict:
@@ -83,3 +84,32 @@ def delete_knowledge_graph(driver: Driver, graph_id: str) -> bool:
         result = session.run(query, graph_id=graph_id)
         record = result.single()
         return record["deleted_count"] > 0 if record else False
+
+
+
+def create_resource_node(driver: Driver, resource: ResourceCreate, sqlite_doc_id: int) -> dict:
+    """在Neo4j中创建资源节点 (Document) 并连接到其父节点"""
+    resource_id = str(uuid.uuid4())
+    query = """
+    MATCH (parent) WHERE parent.id = $parent_id
+    CREATE (parent)-[:CONTAINS_RESOURCE]->(res:Document {
+        id: $id,
+        title: $title,
+        type: $type,
+        graph_id: $graph_id,
+        parent_id: $parent_id,
+        source_document_id: $sqlite_doc_id  // 关联SQLite的ID
+    })
+    RETURN res
+    """
+    with driver.session() as session:
+        result = session.run(
+            query,
+            id=resource_id,
+            title=resource.title,
+            type=resource.type.value, # 使用枚举的值
+            graph_id=resource.graph_id,
+            parent_id=resource.parent_id,
+            sqlite_doc_id=sqlite_doc_id
+        )
+        return result.single()[0]
