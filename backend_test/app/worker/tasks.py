@@ -4,11 +4,15 @@ from typing import List
 
 from sqlalchemy.util import NoneType
 from app.crud import crud_sqlite
+from app.crud.crud_sqlite import create_text_chunk
 from app.crud.crud_graph import create_entity, create_relation, create_document_entity_relation, create_resource_node
 from app.schemas.entity import EntityCreate, RelationCreate, DocumentEntityRelationCreate
 from app.schemas.resource import ResourceCreate
 from app.db.sqlite_session import SessionLocal
 from app.db.neo4j_session import get_neo4j_driver
+from app.core.chunker import chunk_document_by_lines
+from app.core.entity_extractor import extract_entities_from_chunk, simulate_entity_disambiguation
+from app.core.relation_extractor import extract_relations_from_entities
 import random
 import time
 
@@ -28,12 +32,12 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             
         print(f"📖 文档信息: {document.filename} (文档ID: {document.id})")
         
-        # === 1. 模拟文档分块 ===
+        # === 1. 真实文档分块 ===
         print("🔪 开始文档分块...")
-        chunks = _simulate_document_chunking(document.filename)
+        chunks = chunk_document_by_lines(document.content, max_lines_per_chunk=10)
         print(f"✅ 文档分块完成，共生成 {len(chunks)} 个分块")
         
-        # === 2. 遍历分块，提取实体和关系 ===
+        # === 2. 保存分块到SQLite数据库并遍历分块，提取实体和关系 ===
         all_entities = {}  # 用于去重的实体字典
         all_entities_list = []  # 保存所有原始实体（包含chunk_id）
         all_relations = []
@@ -42,12 +46,25 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             chunk_id = f"{document.id}_chunk_{i}"  # 生成分块ID
             print(f"🔍 处理第 {i} 个分块: {chunk[:50]}...")
             
-            # 模拟实体提取
-            entities = _simulate_entity_extraction(chunk, chunk_id)
+            # 💾 保存分块到SQLite数据库
+            try:
+                saved_chunk = create_text_chunk(
+                    db=db_session,
+                    document_id=document.id,
+                    chunk_text=chunk,
+                    chunk_index=i
+                )
+                print(f"  💾 分块已保存到数据库，分块ID: {saved_chunk.id}")
+            except Exception as e:
+                print(f"  ❌ 保存分块到数据库失败: {e}")
+                # 继续处理，不因为保存失败而中断整个流程
+            
+            # 真实实体提取
+            entities = extract_entities_from_chunk(chunk, chunk_id)
             print(f"  📊 提取到 {len(entities)} 个实体: {[e['name'] for e in entities]}")
             
-            # 模拟关系提取
-            relations = _simulate_relation_extraction(entities)
+            # 真实关系提取
+            relations = extract_relations_from_entities(entities)
             print(f"  🔗 提取到 {len(relations)} 个关系")
             
             # 收集所有原始实体（保留chunk_id信息）
@@ -68,9 +85,9 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             # 模拟处理延时
             time.sleep(0.5)
         
-        # === 3. 实体链接与消歧（简化模拟）===
+        # === 3. 实体链接与消歧 ===
         print("🔗 开始实体链接与消歧...")
-        disambiguated_entities = _simulate_entity_disambiguation(all_entities)
+        disambiguated_entities = simulate_entity_disambiguation(all_entities)
         print(f"✅ 实体消歧完成，最终实体数: {len(disambiguated_entities)}")
         
         # === 4. 图谱入库 ===
@@ -215,101 +232,3 @@ def run_batch_knowledge_extraction(document_ids: List[int], graph_id: str = None
 
 
 # === 模拟函数实现 ===
-def _simulate_document_chunking(document_title: str) -> List[str]:
-    """模拟文档分块，根据文档标题生成两个模拟分块"""
-    chunks = [
-        f"这是关于{document_title}的第一部分内容。在这个部分中，我们讨论了人工智能技术的发展历程，包括机器学习、深度学习等核心概念。人工智能已经成为现代科技发展的重要驱动力，在各个领域都有广泛的应用。",
-        f"这是关于{document_title}的第二部分内容。本部分重点介绍了知识图谱技术在人工智能领域的应用。知识图谱通过实体和关系的结构化表示，能够有效地组织和管理大规模的知识信息，为智能系统提供强大的推理能力。"
-    ]
-    return chunks
-
-
-def _simulate_entity_extraction(chunk_text: str, chunk_id: str = None) -> List[dict]:
-    """模拟实体提取，根据分块内容返回模拟的实体列表"""
-    # 根据分块内容的关键词来生成不同的实体
-    entities = []
-    
-    if "人工智能" in chunk_text:
-        entities.extend([
-            {"name": "人工智能", "entity_type": "技术领域", "description": "模拟人类智能的技术", "frequency": 1, "chunk_id": chunk_id},
-            {"name": "机器学习", "entity_type": "技术方法", "description": "让机器从数据中学习的方法", "frequency": 1, "chunk_id": chunk_id},
-            {"name": "深度学习", "entity_type": "技术方法", "description": "基于神经网络的学习方法", "frequency": 1, "chunk_id": chunk_id}
-        ])
-    
-    if "知识图谱" in chunk_text:
-        entities.extend([
-            {"name": "知识图谱", "entity_type": "技术领域", "description": "结构化知识表示方法", "frequency": 1, "chunk_id": chunk_id},
-            {"name": "实体", "entity_type": "概念", "description": "知识图谱中的基本单元", "frequency": 1, "chunk_id": chunk_id},
-            {"name": "关系", "entity_type": "概念", "description": "实体之间的连接", "frequency": 1, "chunk_id": chunk_id},
-            {"name": "推理能力", "entity_type": "能力", "description": "基于知识进行逻辑推理的能力", "frequency": 1, "chunk_id": chunk_id}
-        ])
-    
-    # 添加一些通用实体
-    common_entities = [
-        {"name": "科技发展", "entity_type": "概念", "description": "技术进步的过程", "frequency": 1, "chunk_id": chunk_id},
-        {"name": "智能系统", "entity_type": "系统", "description": "具有智能特征的计算机系统", "frequency": 1, "chunk_id": chunk_id}
-    ]
-    entities.extend(common_entities)
-    
-    # 随机选择3-5个实体返回
-    selected_count = random.randint(3, min(5, len(entities)))
-    return random.sample(entities, selected_count)
-
-
-def _simulate_relation_extraction(entities: List[dict]) -> List[dict]:
-    """模拟关系提取，根据实体列表生成模拟的关系"""
-    relations = []
-    
-    if len(entities) < 2:
-        return relations
-    
-    # 预定义一些关系类型
-    relation_types = [
-        "包含", "属于", "应用于", "基于", "促进", "实现", "支持", "依赖"
-    ]
-    
-    # 生成1-3个关系
-    num_relations = random.randint(1, min(3, len(entities) - 1))
-    
-    for i in range(num_relations):
-        # 随机选择两个不同的实体
-        source_entity = random.choice(entities)
-        target_entity = random.choice([e for e in entities if e != source_entity])
-        
-        relation = {
-            "source_name": source_entity["name"],
-            "source_type": source_entity["entity_type"],
-            "target_name": target_entity["name"],
-            "target_type": target_entity["entity_type"],
-            "relation_type": random.choice(relation_types),
-            "description": f"{source_entity['name']}与{target_entity['name']}之间的关系",
-            "confidence": round(random.uniform(0.7, 0.95), 2)
-        }
-        relations.append(relation)
-    
-    return relations
-
-
-def _simulate_entity_disambiguation(entities_dict: dict) -> dict:
-    """模拟实体消歧，简化处理，主要是合并相似实体"""
-    # 在实际应用中，这里会进行复杂的实体链接和消歧
-    # 这里简化处理，只是返回原始实体字典
-    disambiguated = {}
-    
-    for key, entity in entities_dict.items():
-        # 简单的消歧逻辑：如果实体名称相似，合并频次
-        found_similar = False
-        for existing_key, existing_entity in disambiguated.items():
-            if (
-                entity["name"].lower() == existing_entity["name"].lower() and 
-                entity["entity_type"] == existing_entity["entity_type"]
-            ):
-                # 合并频次
-                existing_entity["frequency"] += entity.get("frequency", 1)
-                found_similar = True
-                break
-        
-        if not found_similar:
-            disambiguated[key] = entity.copy()
-    
-    return disambiguated

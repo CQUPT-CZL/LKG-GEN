@@ -39,7 +39,7 @@ def get_source_documents(db: Session, skip: int = 0, limit: int = 100) -> List[s
     return db.query(sqlite_models.SourceDocument).offset(skip).limit(limit).all()
 
 
-def get_source_document(db: Session, document_id: int) -> Optional[sqlite_models.SourceDocument]:
+def get_source_document(db: Session, document_id: str) -> Optional[sqlite_models.SourceDocument]:
     """
     根据ID获取单个源文档
     
@@ -82,3 +82,36 @@ def update_document_status(db: Session, document_id: int, status: sqlite_models.
         db.refresh(document)
         return document
     return None
+
+
+def create_text_chunk(db: Session, document_id: int, chunk_text: str, chunk_index: int) -> sqlite_models.TextChunk:
+    """
+    在数据库中创建一条新的文本分块记录。
+    
+    :param db: SQLAlchemy 数据库会话
+    :param document_id: 关联的文档ID
+    :param chunk_text: 分块文本内容
+    :param chunk_index: 分块在文档中的索引位置
+    :return: 创建的SQLAlchemy模型实例
+    """
+    # 创建 SQLAlchemy model 实例
+    db_chunk = sqlite_models.TextChunk(
+        document_id=document_id,
+        chunk_text=chunk_text,
+        chunk_index=chunk_index
+    )
+    db.add(db_chunk)  # 添加到会话
+    db.commit()       # 提交事务到数据库
+    db.refresh(db_chunk) # 刷新实例，以获取数据库生成的值（如ID）
+    return db_chunk
+
+
+def get_text_chunks_by_document(db: Session, document_id: int) -> List[sqlite_models.TextChunk]:
+    """
+    根据文档ID获取所有相关的文本分块
+    
+    :param db: SQLAlchemy 数据库会话
+    :param document_id: 文档ID
+    :return: 文本分块列表
+    """
+    return db.query(sqlite_models.TextChunk).filter(sqlite_models.TextChunk.document_id == document_id).order_by(sqlite_models.TextChunk.chunk_index).all()
