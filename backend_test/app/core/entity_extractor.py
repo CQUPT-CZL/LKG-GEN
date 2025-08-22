@@ -59,9 +59,11 @@ def _extract_entities_with_llm(chunk_text: str, chunk_id: str = None) -> List[Di
             text=chunk_text
         )
         # 调用 LLM
+        print(f"🤖 正在调用 LLM 进行实体提取 (chunk_id: {chunk_id})...")
         response = call_llm(prompt)
         if not response:
             print(f"❌ LLM 调用失败 (chunk_id: {chunk_id})")
+            print(f"📝 失败的文本内容: {chunk_text[:100]}...")
             return []
         
         # 解析响应
@@ -75,7 +77,6 @@ def _extract_entities_with_llm(chunk_text: str, chunk_id: str = None) -> List[Di
                         "type": entity_data["entity_type"].strip(),
                         "description": entity_data["entity_description"].strip(),
                         "chunk_id": chunk_id,
-                        "extraction_method": "llm"
                     }
                     entities.append(entity)
   
@@ -104,9 +105,13 @@ def simulate_entity_disambiguation(entities_dict: dict) -> dict:
         # 简单的消歧逻辑：如果实体名称相似，合并频次
         found_similar = False
         for existing_key, existing_entity in disambiguated.items():
+            entity_name = entity.get('text', entity.get('name', ''))
+            entity_type = entity.get('type', entity.get('entity_type', ''))
+            existing_name = existing_entity.get('text', existing_entity.get('name', ''))
+            existing_type = existing_entity.get('type', existing_entity.get('entity_type', ''))
             if (
-                entity["name"].lower() == existing_entity["name"].lower() and 
-                entity["entity_type"] == existing_entity["entity_type"]
+                entity_name.lower() == existing_name.lower() and 
+                entity_type == existing_type
             ):
                 # 合并频次
                 existing_entity["frequency"] += entity.get("frequency", 1)

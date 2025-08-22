@@ -100,7 +100,12 @@ def call_llm(prompt: str, model_name: str = None, temperature: float = 0.1) -> O
             return content
             
     except Exception as e:
-        print(f"❌ 调用 LLM 失败: {e}")
+        error_type = type(e).__name__
+        print(f"❌ 调用 LLM 失败 [{error_type}]: {str(e)}")
+        print(f"🔍 详细信息: 模型={model}, 温度={temperature}")
+        print(f"📝 Prompt长度: {len(prompt)} 字符")
+        if hasattr(e, 'response'):
+            print(f"📡 HTTP状态码: {getattr(e.response, 'status_code', 'N/A')}")
         return None
 
 

@@ -11,6 +11,8 @@ class EntityBase(BaseModel):
     description: Optional[str] = None
     graph_id: str
     chunk_ids: Optional[List[str]] = []  # 记录实体来源的分块ID列表
+    frequency: Optional[int] = 1  # 实体出现次数
+
 
 class EntityCreate(EntityBase):
     document_id: Optional[int] = None  # 关联的文档ID

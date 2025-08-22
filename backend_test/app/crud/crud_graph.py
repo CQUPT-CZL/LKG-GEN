@@ -200,8 +200,9 @@ def create_entity(driver: Driver, entity: EntityCreate) -> dict:
         description: $description,
         graph_id: $graph_id,
         chunk_ids: $chunk_ids,
-        frequency: 1,
-        created_at: datetime()
+        frequency: $frequency,
+        created_at: datetime(),
+        document_id: $document_id
     })
     RETURN e
     """
@@ -213,7 +214,9 @@ def create_entity(driver: Driver, entity: EntityCreate) -> dict:
             entity_type=entity.entity_type,
             description=entity.description,
             graph_id=entity.graph_id,
-            chunk_ids=entity.chunk_ids or []
+            frequency=entity.frequency,
+            chunk_ids=entity.chunk_ids or [],
+            document_id=entity.document_id
         )
         return result.single()[0]
 

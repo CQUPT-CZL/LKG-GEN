@@ -112,7 +112,6 @@ def _extract_relations_with_llm(entities: List[Dict], text: str) -> List[Dict]:
                     'target_name': tail,
                     'relation_type': relation_type,
                     'description': description,
-                    'extraction_method': 'llm'
                 })
             else:
                 print(f"🚫 过滤无效关系: {relation}")

@@ -13,7 +13,6 @@ from app.db.neo4j_session import get_neo4j_driver
 from app.core.chunker import chunk_document_by_lines
 from app.core.entity_extractor import extract_entities_from_chunk, simulate_entity_disambiguation
 from app.core.relation_extractor import extract_relations_from_entities
-import random
 import time
 
 def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, graph_id: str = None, parent_id: str = None):
@@ -34,14 +33,16 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
         
         # === 1. 真实文档分块 ===
         print("🔪 开始文档分块...")
-        chunks = chunk_document_by_lines(document.content, max_lines_per_chunk=10)
+        chunks = chunk_document_by_lines(document.content)
         print(f"✅ 文档分块完成，共生成 {len(chunks)} 个分块")
         
-        # === 2. 保存分块到SQLite数据库并遍历分块，提取实体和关系 ===
+        # === 2. 保存分块到SQLite数据库并提取实体 ===
         all_entities = {}  # 用于去重的实体字典
         all_entities_list = []  # 保存所有原始实体（包含chunk_id）
-        all_relations = []
+        chunk_entities_map = {}  # 保存每个chunk对应的实体列表
         
+        # 第一阶段：对所有chunk进行实体提取
+        print("📊 第一阶段：开始实体提取...")
         for i, chunk in enumerate(chunks, 1):
             chunk_id = f"{document.id}_chunk_{i}"  # 生成分块ID
             print(f"🔍 处理第 {i} 个分块: {chunk[:50]}...")
@@ -59,31 +60,43 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
                 print(f"  ❌ 保存分块到数据库失败: {e}")
                 # 继续处理，不因为保存失败而中断整个流程
             
-            # 真实实体提取
+            # 实体提取
             entities = extract_entities_from_chunk(chunk, chunk_id)
-            print(f"  📊 提取到 {len(entities)} 个实体: {[e['name'] for e in entities]}")
+            print(f"  📊 提取到 {len(entities)} 个实体: {[e.get('text', e.get('name', '未知')) for e in entities]}")
             
-            # 真实关系提取
-            relations = extract_relations_from_entities(entities)
-            print(f"  🔗 提取到 {len(relations)} 个关系")
+            # 保存该chunk的实体列表
+            chunk_entities_map[chunk_id] = {
+                'entities': entities,
+                'chunk_text': chunk
+            }
             
             # 收集所有原始实体（保留chunk_id信息）
             all_entities_list.extend(entities)
             
             # 收集实体（去重）
             for entity in entities:
-                entity_key = f"{entity['name']}_{entity['entity_type']}"
+                entity_key = f"{entity.get('text', entity.get('name', '未知'))}_{entity.get('type', entity.get('entity_type', '未知'))}"
                 if entity_key not in all_entities:
                     all_entities[entity_key] = entity
                 else:
                     # 增加频次
                     all_entities[entity_key]['frequency'] = all_entities[entity_key].get('frequency', 1) + 1
+        
+        # 第二阶段：对每个chunk进行关系提取
+        print("🔗 第二阶段：开始关系提取...")
+        all_relations = []
+        for chunk_id, chunk_data in chunk_entities_map.items():
+            entities = chunk_data['entities']
+            chunk_text = chunk_data['chunk_text']
             
-            # 收集关系
-            all_relations.extend(relations)
+            if len(entities) >= 2:  # 只有当chunk中有2个或以上实体时才进行关系提取
+                 print(f"🔍 为 {chunk_id} 提取关系，实体数: {len(entities)}")
+                 relations = extract_relations_from_entities(entities, chunk_text)
+                 print(f"  🔗 提取到 {len(relations)} 个关系")
+                 all_relations.extend(relations)
+            else:
+                print(f"⚠️ {chunk_id} 实体数不足，跳过关系提取")
             
-            # 模拟处理延时
-            time.sleep(0.5)
         
         # === 3. 实体链接与消歧 ===
         print("🔗 开始实体链接与消歧...")
@@ -132,22 +145,27 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             # 收集该实体的所有chunk_ids
             chunk_ids = []
             for orig_entity in all_entities_list:
-                if orig_entity["name"] == entity_data["name"] and orig_entity.get("chunk_id"):
+                orig_name = orig_entity.get('text', orig_entity.get('name', ''))
+                entity_name = entity_data.get('text', entity_data.get('name', ''))
+                if orig_name == entity_name and orig_entity.get("chunk_id"):
                     chunk_ids.append(orig_entity["chunk_id"])
             
             entity_create = EntityCreate(
-                name=entity_data['name'],
-                entity_type=entity_data['entity_type'],
+                name=entity_data.get('text', entity_data.get('name', '未知')),
+                entity_type=entity_data.get('type', entity_data.get('entity_type', '未知')),
                 description=entity_data.get('description'),
                 graph_id=graph_id or "default-graph-id",
                 chunk_ids=list(set(chunk_ids)),  # 去重
-                document_id=document.id
+                document_id=document.id,
+                frequency=entity_data.get('frequency', 1)
             )
             
             try:
                 created_entity = create_entity(neo4j_driver, entity_create)
-                entity_id_mapping[f"{entity_data['name']}_{entity_data['entity_type']}"] = created_entity['id']
-                print(f"  ✅ 创建实体: {entity_data['name']} ({entity_data['entity_type']}) - 分块: {chunk_ids}")
+                entity_name = entity_data.get('text', entity_data.get('name', '未知'))
+                entity_type = entity_data.get('type', entity_data.get('entity_type', '未知'))
+                entity_id_mapping[f"{entity_name}_{entity_type}"] = created_entity['id']
+                print(f"  ✅ 创建实体: {entity_name} ({entity_type}) - 分块: {chunk_ids}")
                 
                 # 创建文档-实体关系（使用Neo4j资源节点ID）
                 doc_entity_relation = DocumentEntityRelationCreate(
@@ -157,31 +175,53 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
                 )
                 create_document_entity_relation(neo4j_driver, doc_entity_relation)
             except Exception as e:
-                print(f"  ❌ 创建实体失败: {entity_data['name']} - {e}")
+                entity_name = entity_data.get('text', entity_data.get('name', '未知'))
+                print(f"  ❌ 创建实体失败: {entity_name} - {e}")
         
         # 4.2 创建关系
         created_relations_count = 0
         for relation_data in all_relations:
-            source_key = f"{relation_data['source_name']}_{relation_data['source_type']}"
-            target_key = f"{relation_data['target_name']}_{relation_data['target_type']}"
+            # 通过实体名称查找对应的实体类型
+            source_name = relation_data['source_name']
+            target_name = relation_data['target_name']
             
-            if source_key in entity_id_mapping and target_key in entity_id_mapping:
-                relation_create = RelationCreate(
-                    source_entity_id=entity_id_mapping[source_key],
-                    target_entity_id=entity_id_mapping[target_key],
-                    relation_type=relation_data['relation_type'],
-                    description=relation_data.get('description'),
-                    confidence=relation_data.get('confidence', 0.8),
-                    graph_id=graph_id or "default-graph-id"
-                )
+            # 在disambiguated_entities中查找匹配的实体
+            source_entity = None
+            target_entity = None
+            
+            for entity_key, entity_data in disambiguated_entities.items():
+                entity_name = entity_data.get('text', entity_data.get('name', ''))
+                if entity_name == source_name:
+                    source_entity = entity_data
+                elif entity_name == target_name:
+                    target_entity = entity_data
+            
+            if source_entity and target_entity:
+                source_type = source_entity.get('type', source_entity.get('entity_type', '未知'))
+                target_type = target_entity.get('type', target_entity.get('entity_type', '未知'))
                 
-                try:
-                    created_relation = create_relation(neo4j_driver, relation_create)
-                    if created_relation:
-                        created_relations_count += 1
-                        print(f"  ✅ 创建关系: {relation_data['source_name']} -[{relation_data['relation_type']}]-> {relation_data['target_name']}")
-                except Exception as e:
-                    print(f"  ❌ 创建关系失败: {relation_data['source_name']} -> {relation_data['target_name']} - {e}")
+                source_key = f"{source_name}_{source_type}"
+                target_key = f"{target_name}_{target_type}"
+                
+                if source_key in entity_id_mapping and target_key in entity_id_mapping:
+                    relation_create = RelationCreate(
+                        source_entity_id=entity_id_mapping[source_key],
+                        target_entity_id=entity_id_mapping[target_key],
+                        relation_type=relation_data['relation_type'],
+                        description=relation_data.get('description'),
+                        confidence=relation_data.get('confidence', 0.8),
+                        graph_id=graph_id or "default-graph-id"
+                    )
+                
+                    try:
+                        created_relation = create_relation(neo4j_driver, relation_create)
+                        if created_relation:
+                            created_relations_count += 1
+                            print(f"  ✅ 创建关系: {relation_data['source_name']} -[{relation_data['relation_type']}]-> {relation_data['target_name']}")
+                    except Exception as e:
+                        print(f"  ❌ 创建关系失败: {relation_data['source_name']} -> {relation_data['target_name']} - {e}")
+            else:
+                print(f"  ⚠️ 跳过关系（实体未找到）: {source_name} -> {target_name}")
         
         print(f"💾 图谱入库完成！创建了 {len(entity_id_mapping)} 个实体，{created_relations_count} 个关系")
         
@@ -196,7 +236,7 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
         # 可以选择在这里抛出异常来中断整个批处理，或者继续处理下一个
         # raise e 
 
-def run_batch_knowledge_extraction(document_ids: List[int], graph_id: str = NoneType, parent_id: str = None):
+def run_batch_knowledge_extraction(document_ids: List[int], graph_id: str = None, parent_id: str = None):
     """
     这是新的、在后台运行的【批量】知识提取主函数。
     它会按顺序串行处理列表中的每一个文档。
