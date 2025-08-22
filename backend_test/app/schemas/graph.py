@@ -17,6 +17,33 @@ class Graph(GraphBase):
     class Config:
         from_attributes = True
 
+# --- Entity and Relationship Schemas for Subgraph ---
+class Entity(BaseModel):
+    id: str
+    name: str
+    type: Optional[str] = None
+    properties: Optional[dict] = None
+    
+    class Config:
+        from_attributes = True
+
+class Relationship(BaseModel):
+    id: str
+    type: str
+    start_node_id: str
+    end_node_id: str
+    properties: Optional[dict] = None
+    
+    class Config:
+        from_attributes = True
+
+class Subgraph(BaseModel):
+    entities: list[Entity]
+    relationships: list[Relationship]
+    
+    class Config:
+        from_attributes = True
+
 # --- Category Schemas ---
 class CategoryBase(BaseModel):
     name: str

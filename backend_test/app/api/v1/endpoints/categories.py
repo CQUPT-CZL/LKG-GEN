@@ -94,3 +94,55 @@ def delete_category(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除分类失败: {e}")
+
+
+@router.get("/{category_id}/subgraph", response_model=graph_schemas.Subgraph)
+def get_category_subgraph(
+    *,
+    driver: Driver = Depends(deps.get_neo4j),
+    category_id: str
+):
+    """
+    获取某一分类下面的子图谱
+    返回该分类下所有实体和它们之间的关系
+    """
+    try:
+        # 检查分类是否存在
+        category = crud_graph.get_node_by_id(driver=driver, node_id=category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="分类不存在")
+        
+        # 获取子图谱数据
+        subgraph_data = crud_graph.get_category_subgraph(driver=driver, category_id=category_id)
+        
+        # 转换为响应模型
+        entities = [
+            graph_schemas.Entity(
+                id=entity["id"],
+                name=entity["name"],
+                type=entity["type"],
+                properties=entity["properties"]
+            )
+            for entity in subgraph_data["entities"]
+        ]
+        
+        relationships = [
+            graph_schemas.Relationship(
+                id=rel["id"],
+                type=rel["type"],
+                start_node_id=rel["start_node_id"],
+                end_node_id=rel["end_node_id"],
+                properties=rel["properties"]
+            )
+            for rel in subgraph_data["relationships"]
+        ]
+        
+        return graph_schemas.Subgraph(
+            entities=entities,
+            relationships=relationships
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类子图谱失败: {e}")

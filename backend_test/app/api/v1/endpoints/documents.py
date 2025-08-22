@@ -8,7 +8,8 @@ from neo4j import Driver
 from app.api import deps
 from app.services import document_service
 from app.schemas import resource as resource_schemas
-from app.crud import crud_sqlite
+from app.schemas import graph as graph_schemas
+from app.crud import crud_sqlite, crud_graph
 
 router = APIRouter()
 
@@ -97,4 +98,38 @@ def create_resources(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"创建资源失败: {e}")
+        raise HTTPException(status_code=500, detail=f"批量创建资源失败: {e}")
+
+
+@router.get("/{document_id}/subgraph", response_model=graph_schemas.Subgraph)
+def get_document_subgraph(
+    *,
+    db: Session = Depends(deps.get_db),
+    driver: Driver = Depends(deps.get_neo4j_driver),
+    document_id: int
+):
+    """
+    获取指定文档下的子图谱
+    返回该文档相关的所有实体和它们之间的关系
+    """
+    try:
+        # 首先检查文档是否存在
+        document = crud_sqlite.get_source_document(db=db, document_id=document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        
+        # 获取文档的子图谱数据
+        subgraph_data = crud_graph.get_document_subgraph(driver=driver, document_id=document_id)
+        
+        # 转换为Pydantic模型
+        entities = [graph_schemas.Entity(**entity) for entity in subgraph_data["entities"]]
+        relationships = [graph_schemas.Relationship(**rel) for rel in subgraph_data["relationships"]]
+        
+        return graph_schemas.Subgraph(
+            entities=entities,
+            relationships=relationships
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取文档子图谱失败: {e}")

@@ -22,6 +22,171 @@ def create_knowledge_graph(driver: Driver, graph: GraphCreate) -> dict:
         result = session.run(query, id=graph_id, name=graph.name, description=graph.description)
         return result.single()[0]
 
+def get_document_subgraph(driver: Driver, document_id: int) -> dict:
+    """
+    获取某个文档下面的所有实体和关系
+    返回该文档相关的所有实体和它们之间的关系
+    """
+    query = """
+    // 步骤1: 找到指定的文档节点
+    MATCH (doc:Document {source_document_id: $document_id})
+    
+    // 步骤2: 获取该文档关联的所有实体
+    MATCH (doc)-[:HAS_ENTITY]->(entity:Entity)
+    
+    // 步骤3: 将找到的所有不重复的实体收集起来
+    WITH COLLECT(DISTINCT entity) AS subgraph_entities
+    
+    // 步骤4: 在收集到的实体集合内部，寻找它们之间的关系
+    UNWIND subgraph_entities AS e1
+    MATCH (e1)-[r:RELATION]-(e2) WHERE e2 IN subgraph_entities
+    
+    // 步骤5: 返回构成子图谱的节点和关系
+    RETURN COLLECT(DISTINCT e1) AS entities, COLLECT(DISTINCT {relation: r, start_node: startNode(r), end_node: endNode(r)}) AS relationships
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, document_id=document_id)
+        record = result.single()
+        
+        if not record:
+            return {"entities": [], "relationships": []}
+        
+        # 处理实体数据
+        entities = []
+        for entity in record["entities"]:
+            # 处理实体属性，转换Neo4j特殊类型
+            properties = dict(entity)
+            processed_properties = {}
+            for key, value in properties.items():
+                if hasattr(value, 'iso_format'):  # Neo4j DateTime类型
+                    processed_properties[key] = value.iso_format()
+                elif isinstance(value, list):
+                    processed_properties[key] = [str(item) for item in value]
+                else:
+                    processed_properties[key] = value
+            
+            entities.append({
+                "id": processed_properties.get("id", ""),
+                "name": processed_properties.get("name", ""),
+                "type": processed_properties.get("type"),
+                "properties": processed_properties
+            })
+        
+        # 处理关系数据
+        relationships = []
+        for rel_data in record["relationships"]:
+            relation = rel_data["relation"]
+            start_node = rel_data["start_node"]
+            end_node = rel_data["end_node"]
+            
+            # 处理关系属性
+            rel_properties = dict(relation)
+            processed_rel_properties = {}
+            for key, value in rel_properties.items():
+                if hasattr(value, 'iso_format'):  # Neo4j DateTime类型
+                    processed_rel_properties[key] = value.iso_format()
+                elif isinstance(value, list):
+                    processed_rel_properties[key] = [str(item) for item in value]
+                else:
+                    processed_rel_properties[key] = value
+            
+            relationships.append({
+                "id": processed_rel_properties.get("id", str(relation.id)),
+                "type": relation.type,
+                "start_node_id": start_node.get("id", ""),
+                "end_node_id": end_node.get("id", ""),
+                "properties": processed_rel_properties
+            })
+        
+        return {
+            "entities": entities,
+            "relationships": relationships
+        }
+
+def get_category_subgraph(driver: Driver, category_id: str) -> dict:
+    """
+    获取某一分类下面的子图谱
+    返回该分类下所有实体和它们之间的关系
+    """
+    query = """
+    // 步骤1: 找到起始分类节点，并遍历其下的所有层级，找到所有提及的实体
+    MATCH (start_category:Category {id: $category_id})
+    // 使用实际存在的关系类型进行可变长度的路径遍历
+    MATCH (start_category)-[:HAS_CHILD|CONTAINS_RESOURCE*]->(doc:Document)
+    MATCH (doc)-[:HAS_ENTITY]->(entity:Entity)
+    
+    // 步骤2: 将找到的所有不重复的实体收集起来
+    WITH COLLECT(DISTINCT entity) AS subgraph_entities
+    
+    // 步骤3: 在收集到的实体集合内部，寻找它们之间的关系
+    UNWIND subgraph_entities AS e1
+    MATCH (e1)-[r:RELATION]-(e2) WHERE e2 IN subgraph_entities
+    
+    // 步骤4: 返回构成子图谱的节点和关系
+    RETURN COLLECT(DISTINCT e1) AS entities, COLLECT(DISTINCT {relation: r, start_node: startNode(r), end_node: endNode(r)}) AS relationships
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, category_id=category_id)
+        record = result.single()
+        
+        if not record:
+            return {"entities": [], "relationships": []}
+            
+        # 处理实体数据
+        entities = []
+        for entity_node in record["entities"]:
+            # 打印实体节点的属性
+            print(f"Entity Node: {entity_node}")
+
+            # 转换Neo4j特殊类型为Python标准类型
+            properties = {}
+            for key, value in entity_node.items():
+                if hasattr(value, 'iso_format'):  # Neo4j DateTime  
+                    properties[key] = value.iso_format()
+                elif isinstance(value, list):
+                    properties[key] = [str(item) if hasattr(item, 'iso_format') else item for item in value]
+                else:
+                    properties[key] = value
+            
+            entities.append({
+                "id": entity_node["id"],
+                "name": entity_node["name"],
+                "type": entity_node.get("entity_type"),
+                "properties": properties
+            })
+        
+        # 处理关系数据
+        relationships = []
+        for rel_data in record["relationships"]:
+            rel = rel_data["relation"]
+            start_node = rel_data["start_node"]
+            end_node = rel_data["end_node"]
+            
+            # 转换关系属性中的Neo4j特殊类型
+            rel_properties = {}
+            for key, value in rel.items():
+                if hasattr(value, 'iso_format'):  # Neo4j DateTime
+                    rel_properties[key] = value.iso_format()
+                elif isinstance(value, list):
+                    rel_properties[key] = [str(item) if hasattr(item, 'iso_format') else item for item in value]
+                else:
+                    rel_properties[key] = value
+            
+            relationships.append({
+                "id": str(rel.id),
+                "type": rel.type,
+                "start_node_id": start_node["id"],
+                "end_node_id": end_node["id"],
+                "properties": rel_properties
+            })
+        
+        return {
+            "entities": entities,
+            "relationships": relationships
+        }
+
 
 # === 实体相关操作 ===
 def create_entity(driver: Driver, entity: EntityCreate) -> dict:
