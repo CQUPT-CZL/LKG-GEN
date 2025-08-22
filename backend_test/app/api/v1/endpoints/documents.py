@@ -7,32 +7,12 @@ from typing import List
 from neo4j import Driver
 from app.api import deps
 from app.services import document_service
-from app.schemas import document as document_schemas
+from app.schemas import resource as resource_schemas
 from app.crud import crud_sqlite
 
 router = APIRouter()
 
-@router.post("/upload", response_model=document_schemas.Document)
-async def upload_document(
-    *,
-    db: Session = Depends(deps.get_db), # 通过依赖注入获取DB会话
-    file: UploadFile = File(...)      # 要求必须上传一个文件
-):
-    """
-    上传一个文档 (.md, .txt等) 进行处理。
-    """
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="没有文件名")
-        
-    try:
-        document = await document_service.create_upload_document(db=db, file=file)
-        return document
-    except Exception as e:
-        # 在真实应用中，这里应该有更详细的错误处理
-        raise HTTPException(status_code=500, detail=f"文件处理失败: {e}")
-
-
-@router.get("/", response_model=List[document_schemas.Document])
+@router.get("/", response_model=List[resource_schemas.SourceResource])
 def get_documents(
     *,
     db: Session = Depends(deps.get_db),
@@ -49,7 +29,7 @@ def get_documents(
         raise HTTPException(status_code=500, detail=f"获取文档列表失败: {e}")
 
 
-@router.get("/{document_id}", response_model=document_schemas.Document)
+@router.get("/{document_id}", response_model=resource_schemas.SourceResource)
 def get_document(
     *,
     db: Session = Depends(deps.get_db),
@@ -92,27 +72,28 @@ def delete_document(
 
 
 
-@router.post("/resources", response_model=document_schemas.Resource)
-def create_resource(
+@router.post("/resources", response_model=resource_schemas.BatchResourceResponse)
+def create_resources(
     *,
     db: Session = Depends(deps.get_db),
     driver: Driver = Depends(deps.get_neo4j_driver),
-    resource_in: document_schemas.ResourceCreate,
+    batch_request: resource_schemas.BatchResourceCreate,
     background_tasks: BackgroundTasks
 ):
     """
-    创建一个新的资源（论文、书籍、网页等）。
+    创建资源（论文、书籍、网页等）。
     
-    这个接口会处理所有必要的数据库操作，并触发后台知识抽取。
+    支持批量创建多个资源，包括数据库操作和后台知识抽取。
+    返回成功和失败的统计信息。
     """
     try:
-        resource_node = document_service.create_new_resource(
+        result = document_service.create_batch_resources(
             driver=driver,
             db=db,
-            resource=resource_in,
+            batch_request=batch_request,
             background_tasks=background_tasks
         )
-        return resource_node
+        return result
     except HTTPException:
         raise
     except Exception as e:

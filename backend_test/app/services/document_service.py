@@ -3,11 +3,14 @@
 from sqlalchemy.orm import Session
 from neo4j import Driver
 from fastapi import HTTPException
-from app.crud import crud_graph
 from fastapi import UploadFile
 from app.crud import crud_sqlite
-from app.schemas.document import DocumentCreate
+from app.schemas.resource import BatchResourceCreate, BatchResourceResponse
 from app.models.sqlite_models import SourceDocument
+from fastapi import BackgroundTasks
+from app.schemas.resource import ResourceCreate
+from app.worker.tasks import run_batch_knowledge_extraction
+from typing import List
 
 async def create_upload_document(db: Session, file: UploadFile) -> SourceDocument:
     """
@@ -21,11 +24,23 @@ async def create_upload_document(db: Session, file: UploadFile) -> SourceDocumen
     content_bytes = await file.read()
     content_str = content_bytes.decode("utf-8")
     
-    # 准备Pydantic模型
-    doc_in = DocumentCreate(filename=file.filename, content=content_str)
+    # 准备Pydantic模型 - 使用ResourceCreate统一概念
+    from app.models.sqlite_models import ResourceTypeEnum as ModelResourceTypeEnum
+    resource_in = ResourceCreate(
+        filename=file.filename, 
+        content=content_str,
+        parent_id="",  # 单个上传时可以为空
+        graph_id="",   # 单个上传时可以为空
+        type="论文"  # 默认为论文类型
+    )
     
     # 调用CRUD层函数，将文档信息写入数据库
-    document = crud_sqlite.create_source_document(db=db, doc=doc_in)
+    document = crud_sqlite.create_source_document(
+        db=db, 
+        filename=resource_in.filename,
+        content=resource_in.content,
+        resource_type=ModelResourceTypeEnum.paper
+    )
     
     # !!! 核心异步处理触发点 !!!
     # 在这里，我们将把文档ID发送给后台任务队列（Celery或ARQ）
@@ -35,43 +50,70 @@ async def create_upload_document(db: Session, file: UploadFile) -> SourceDocumen
     return document
 
 
-
-from fastapi import BackgroundTasks
-from app.schemas.document import ResourceCreate
-
-def create_new_resource(
+def create_batch_resources(
     driver: Driver,
     db: Session,
-    resource: ResourceCreate,
+    batch_request: BatchResourceCreate,
     background_tasks: BackgroundTasks
-) -> dict:
+) -> BatchResourceResponse:
     """
-    创建新资源的完整业务流程：
+    批量创建资源的完整业务流程：
     1. 验证父节点存在且合法
-    2. 在SQLite中存储原文
-    3. 在Neo4j中创建元数据节点
-    4. 触发后台知识抽取任务
+    2. 在SQLite中批量存储资源原文
+    3. 收集成功和失败的结果
+    4. 触发批量后台知识抽取任务（Neo4j资源节点将在此任务中创建）
     """
-    # 验证1：父节点必须存在
-    parent_node = crud_graph.get_node_by_id(driver=driver, node_id=resource.parent_id)
-    if not parent_node:
-        raise HTTPException(status_code=404, detail=f"父节点 ID '{resource.parent_id}' 不存在")
-
-    # 验证2：父节点必须属于当前操作的图谱
-    if parent_node.get("graph_id") != resource.graph_id:
-        raise HTTPException(status_code=400, detail="不能跨图谱创建资源")
-
-    # 步骤1：在SQLite中存储资源原文
-    source_document = crud_sqlite.create_source_document(
-        db=db, title=resource.title, content=resource.content
+    # 父节点验证将在知识抽取任务中进行
+    
+    created_resources = []
+    failed_resources = []
+    document_ids = []  # 用于批量知识抽取
+    
+    # 批量处理每个资源
+    for resource_item in batch_request.resources:
+        try:
+            # 创建完整的ResourceCreate对象
+            resource = ResourceCreate(
+                filename=resource_item.filename,
+                parent_id=batch_request.parent_id,
+                graph_id=batch_request.graph_id,
+                type=resource_item.type,
+                content=resource_item.content
+            )
+            
+            # 在SQLite中存储资源原文
+            source_document = crud_sqlite.create_source_document(
+                db=db, 
+                filename=resource.filename,
+                content=resource.content,
+                resource_type=resource.type
+            )
+            
+            # 添加到成功列表 - 直接使用source_document对象
+            created_resources.append(source_document)
+            
+            document_ids.append(source_document.id)
+            
+        except Exception as e:
+             # 添加到失败列表
+             failed_resources.append({
+                 "filename": resource_item.filename,
+                 "error": str(e)
+             })
+    
+    # 如果有成功创建的资源，触发批量知识抽取任务
+    if document_ids:
+        background_tasks.add_task(
+            run_batch_knowledge_extraction, 
+            document_ids=document_ids, 
+            graph_id=batch_request.graph_id,
+            parent_id=batch_request.parent_id
+        )
+    
+    return BatchResourceResponse(
+        success_count=len(created_resources),
+        failed_count=len(failed_resources),
+        total_count=len(batch_request.resources),
+        created_resources=created_resources,
+        failed_resources=failed_resources
     )
-
-    # 步骤2：在Neo4j中创建资源的元数据节点，并关联SQLite的ID
-    resource_node = crud_graph.create_resource_node(
-        driver=driver, resource=resource, sqlite_doc_id=source_document.id
-    )
-
-    # 步骤3：触发后台知识抽取任务
-    # background_tasks.add_task(run_knowledge_extraction, document_id=source_document.id)
-
-    return resource_node

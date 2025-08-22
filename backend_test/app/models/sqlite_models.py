@@ -42,6 +42,7 @@ class SourceDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
     content = Column(Text, nullable=False)
+    resource_type = Column(String, nullable=False, default="论文")
     status = Column(Enum(DocumentStatusEnum), nullable=False, default=DocumentStatusEnum.pending)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 

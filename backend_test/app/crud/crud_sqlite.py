@@ -3,21 +3,23 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.models import sqlite_models
-from app.schemas import document as document_schemas
+from app.schemas import resource as resource_schemas
 
-def create_source_document(db: Session, doc: document_schemas.DocumentCreate) -> sqlite_models.SourceDocument:
+def create_source_document(db: Session, filename: str, content: str, resource_type: str = None) -> sqlite_models.SourceDocument:
     """
     在数据库中创建一条新的源文档记录。
     
     :param db: SQLAlchemy 数据库会话
-    :param doc: 包含文件名和内容的Pydantic模型
+    :param filename: 文件名
+    :param content: 文件内容
+    :param resource_type: 资源类型枚举
     :return: 创建的SQLAlchemy模型实例
     """
-    # 将 Pydantic schema 转换为 SQLAlchemy model 实例
+    # 创建 SQLAlchemy model 实例
     db_document = sqlite_models.SourceDocument(
-        filename=doc.filename,
-        content=doc.content
-        # status 和 uploaded_at 会使用默认值
+        filename=filename,
+        content=content,
+        resource_type=resource_type
     )
     db.add(db_document)  # 添加到会话
     db.commit()          # 提交事务到数据库
@@ -80,15 +82,3 @@ def update_document_status(db: Session, document_id: int, status: sqlite_models.
         db.refresh(document)
         return document
     return None
-    
-
-def create_source_document(db: Session, title: str, content: str) -> sqlite_models.SourceDocument:
-    """在SQLite中创建一条新的源文档记录"""
-    db_document = sqlite_models.SourceDocument(
-        filename=title, # 使用资源的标题作为文件名
-        content=content
-    )
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
-    return db_document
