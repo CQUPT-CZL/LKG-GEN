@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Card,
   Button,
@@ -16,7 +16,8 @@ import {
   Col,
   Divider,
   message,
-  Spin
+  Spin,
+  TreeSelect
 } from 'antd';
 import {
   FullscreenOutlined,
@@ -30,7 +31,7 @@ import {
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
-import { apiService, Graph, Subgraph, Entity, Relationship, SourceResource } from '../services/api';
+import { apiService, Graph, Subgraph, Entity, Relationship, SourceResource, Category } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -58,10 +59,15 @@ interface GraphStats {
   edgeTypes: Record<string, number>;
 }
 
+// 新增：分类树节点类型定义
+type CategoryTreeNode = { title: string; value: string; key: string; children?: CategoryTreeNode[] };
+
 const GraphVisualization: React.FC = () => {
   const [graphs, setGraphs] = useState<Graph[]>([]);
   const [documents, setDocuments] = useState<SourceResource[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedGraph, setSelectedGraph] = useState<Graph | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<SourceResource | null>(null);
   const [subgraph, setSubgraph] = useState<Subgraph | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,12 +84,36 @@ const GraphVisualization: React.FC = () => {
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
 
+  // 新增：根据分类列表构建树形结构（支持多级分类）
+  const categoryTree: CategoryTreeNode[] = useMemo(() => {
+    if (!selectedGraph) return [];
+    const nodeMap = new Map<string, CategoryTreeNode>();
+    categories.forEach(cat => {
+      nodeMap.set(cat.id, { title: cat.name, value: cat.id, key: cat.id, children: [] });
+    });
+    const roots: CategoryTreeNode[] = [];
+    categories.forEach(cat => {
+      const node = nodeMap.get(cat.id)!;
+      if (cat.parent_id === selectedGraph.id) {
+        roots.push(node);
+      } else if (cat.parent_id && nodeMap.has(cat.parent_id)) {
+        nodeMap.get(cat.parent_id)!.children!.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    return roots;
+  }, [categories, selectedGraph]);
+
   useEffect(() => {
     loadGraphs();
   }, []);
 
   useEffect(() => {
     if (selectedGraph) {
+      loadCategories();
+      setSelectedCategory(null);
+      setSelectedDocument(null);
       loadDocuments();
       // 同时加载图谱级子图谱，便于直接查看整图 🔎
       loadGraphSubgraph();
@@ -91,10 +121,22 @@ const GraphVisualization: React.FC = () => {
   }, [selectedGraph]);
 
   useEffect(() => {
-    if (selectedDocument) {
-      loadDocumentSubgraph();
+    // 选择分类后：加载该分类子图谱，并按分类过滤文档
+    if (!selectedGraph) return;
+    if (selectedCategory) {
+      loadCategorySubgraph();
+      loadDocuments();
+    } else {
+      // 清空分类时，回到整图
+      loadGraphSubgraph();
+      loadDocuments();
     }
-  }, [selectedDocument]);
+  }, [selectedCategory]);
+  useEffect(() => {
+     if (selectedDocument) {
+       loadDocumentSubgraph();
+     }
+   }, [selectedDocument]);
 
   useEffect(() => {
     if (subgraph) {
@@ -118,11 +160,27 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
+  const loadCategories = async () => {
+    if (!selectedGraph) return;
+    try {
+      const list = await apiService.getGraphCategories(selectedGraph.id);
+      setCategories(list);
+    } catch (error) {
+      console.error('加载分类失败:', error);
+      message.error('加载分类失败');
+    }
+  };
+
   const loadDocuments = async () => {
     try {
-      const documentsData = selectedGraph 
-        ? await apiService.getGraphDocuments(selectedGraph.id)
-        : await apiService.getDocuments();
+      let documentsData: SourceResource[] = [];
+      if (selectedCategory) {
+        documentsData = await apiService.getCategoryDocuments(selectedCategory.id);
+      } else if (selectedGraph) {
+        documentsData = await apiService.getGraphDocuments(selectedGraph.id);
+      } else {
+        documentsData = await apiService.getDocuments();
+      }
       setDocuments(documentsData);
     } catch (error) {
       console.error('加载文档失败:', error);
@@ -161,18 +219,36 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
+  // 新增：加载分类级子图谱
+  const loadCategorySubgraph = async () => {
+    if (!selectedCategory) return;
+    setLoading(true);
+    try {
+      const subgraphData = await apiService.getCategorySubgraph(selectedCategory.id);
+      setSubgraph(subgraphData);
+    } catch (error) {
+      console.error('加载分类子图谱失败:', error);
+      message.error('加载分类子图谱失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const buildNetworkData = () => {
     if (!subgraph) return;
 
-    const nodes: GraphNode[] = subgraph.entities.map(entity => ({
-      id: entity.id.toString(),
-      label: entity.name,
-      type: entity.type || 'Unknown',
-      properties: entity.properties,
-      color: getNodeColor(entity.type || 'Unknown'),
-      size: nodeSize,
-      font: { size: showLabels ? 14 : 0 }
-    }));
+    const nodes: GraphNode[] = subgraph.entities.map(entity => {
+      const nodeType: string = (entity.type as string) || (entity.properties?.entity_type as string) || 'Unknown';
+      return {
+        id: entity.id.toString(),
+        label: entity.name,
+        type: nodeType,
+        properties: entity.properties,
+        color: getNodeColor(nodeType),
+        size: nodeSize,
+        font: { size: showLabels ? 14 : 0 }
+      } as GraphNode;
+    });
 
     const edges: GraphEdge[] = subgraph.relationships.map(rel => {
       const anyRel: any = rel as any;
@@ -183,10 +259,10 @@ const GraphVisualization: React.FC = () => {
         id: (anyRel.id ?? '').toString(),
         from: fromId,
         to: toId,
-        label: showLabels ? relType : '',
+        label: relType,
         type: relType,
         width: edgeWidth,
-        arrows: { to: { enabled: true } }
+        arrows: 'to'
       } as GraphEdge;
     });
 
@@ -376,27 +452,49 @@ const GraphVisualization: React.FC = () => {
                     </Option>
                   ))}
                 </Select>
-                
                 {selectedGraph && (
-                  <Select
-                    placeholder="选择文档"
-                    style={{ width: 200 }}
-                    value={selectedDocument?.id}
+                  <TreeSelect
+                    allowClear
+                    placeholder="选择分类（可选，支持多级）"
+                    style={{ width: 260 }}
+                    dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
+                    treeData={categoryTree as any}
+                    value={selectedCategory?.id}
+                    treeDefaultExpandAll
                     onChange={(value) => {
-                      const doc = documents.find(d => d.id === value);
-                      setSelectedDocument(doc || null);
+                      const cat = categories.find(c => c.id === value) || null;
+                      setSelectedCategory(cat);
+                      setSelectedDocument(null);
                     }}
-                  >
-                    {documents.map(doc => (
-                      <Option key={doc.id} value={doc.id}>
-                        {doc.filename}
-                      </Option>
-                    ))}
-                  </Select>
+                    onClear={() => {
+                      setSelectedCategory(null);
+                      setSelectedDocument(null);
+                    }}
+                  />
                 )}
+                 {selectedGraph && (
+                   <Select
+                     placeholder="选择文档"
+                     style={{ width: 200 }}
+                     value={selectedDocument?.id}
+                     onChange={(value) => {
+                       const doc = documents.find(d => d.id === value);
+                       setSelectedDocument(doc || null);
+                     }}
+                   >
+                     {documents.map(doc => (
+                       <Option key={doc.id} value={doc.id}>
+                         {doc.filename}
+                       </Option>
+                     ))}
+                   </Select>
+                 )}
 
-                {selectedGraph && (
+                {selectedGraph && !selectedCategory && (
                   <Button type="primary" onClick={loadGraphSubgraph} icon={<SearchOutlined />}>加载图谱子图谱</Button>
+                )}
+                {selectedGraph && selectedCategory && (
+                  <Button type="primary" onClick={loadCategorySubgraph} icon={<SearchOutlined />}>加载分类子图谱</Button>
                 )}
               </Space>
             }

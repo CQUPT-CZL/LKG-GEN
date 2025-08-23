@@ -745,3 +745,20 @@ def get_document_ids_by_graph(driver: Driver, graph_id: str) -> list[int]:
         doc_ids = record.get("doc_ids") or []
         # 转为int类型，过滤None
         return [int(i) for i in doc_ids if i is not None]
+
+
+def get_document_ids_by_category(driver: Driver, category_id: str) -> list[int]:
+    """获取分类（包含其子分类）下所有资源(Document)对应的SQLite文档ID列表"""
+    query = """
+    MATCH (c:Category {id: $category_id})
+    OPTIONAL MATCH (c)-[:HAS_CHILD*0..]->(parent)-[:CONTAINS_RESOURCE]->(d:Document)
+    WITH collect(DISTINCT d.source_document_id) AS ids
+    RETURN [id IN ids WHERE id IS NOT NULL] AS doc_ids
+    """
+    with driver.session() as session:
+        result = session.run(query, category_id=category_id)
+        record = result.single()
+        if not record:
+            return []
+        doc_ids = record.get("doc_ids") or []
+        return [int(i) for i in doc_ids if i is not None]

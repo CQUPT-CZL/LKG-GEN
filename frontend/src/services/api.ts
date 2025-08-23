@@ -195,6 +195,8 @@ export const apiService = {
     api.delete(`/categories/${categoryId}`),
   getCategorySubgraph: (categoryId: string): Promise<Subgraph> => 
     api.get(`/categories/${categoryId}/subgraph`),
+  getCategoryDocuments: (categoryId: string): Promise<SourceResource[]> => 
+    api.get(`/categories/${categoryId}/documents`),
 
   // 任务管理API
   getTasks: (): Promise<Task[]> => 

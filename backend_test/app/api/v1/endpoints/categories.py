@@ -3,9 +3,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from neo4j import Driver
 from typing import List
+from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas import graph as graph_schemas
 from app.crud import crud_graph
+from app.schemas import resource as resource_schemas
+from app.crud import crud_sqlite
 
 router = APIRouter()
 
@@ -146,3 +149,30 @@ def get_category_subgraph(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取分类子图谱失败: {e}")
+
+
+@router.get("/{category_id}/documents", response_model=List[resource_schemas.SourceResource])
+def get_category_documents(
+    *,
+    db: Session = Depends(deps.get_db),
+    driver: Driver = Depends(deps.get_neo4j),
+    category_id: str
+):
+    """
+    获取指定分类（含其子分类）下的资源（文档）列表。
+    基于Neo4j中Category到Document的CONTAINS_RESOURCE关系，
+    收集source_document_id，再到SQLite中批量查询。
+    """
+    try:
+        # 检查分类是否存在
+        category = crud_graph.get_node_by_id(driver=driver, node_id=category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="分类不存在")
+
+        doc_ids = crud_graph.get_document_ids_by_category(driver=driver, category_id=category_id)
+        documents = crud_sqlite.get_source_documents_by_ids(db=db, document_ids=doc_ids)
+        return documents
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取分类文档失败: {e}")
