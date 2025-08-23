@@ -202,7 +202,7 @@ def create_entity(driver: Driver, entity: EntityCreate) -> dict:
         chunk_ids: $chunk_ids,
         frequency: $frequency,
         created_at: datetime(),
-        document_id: $document_id
+        document_ids: $document_ids
     })
     RETURN e
     """
@@ -216,8 +216,8 @@ def create_entity(driver: Driver, entity: EntityCreate) -> dict:
             graph_id=entity.graph_id,
             frequency=entity.frequency,
             chunk_ids=entity.chunk_ids or [],
-            document_id=entity.document_id
-        )
+            document_ids=entity.document_ids or []
+        )   
         return result.single()[0]
 
 
@@ -241,6 +241,60 @@ def get_entity_by_id(driver: Driver, entity_id: str) -> dict | None:
     """
     with driver.session() as session:
         result = session.run(query, id=entity_id)
+        record = result.single()
+        return dict(record[0]) if record else None
+
+
+def update_entity(driver: Driver, entity_id: str, new_chunk_ids: list = None, new_document_ids: list = None, frequency: int = None) -> dict | None:
+    """更新现有实体的chunk_ids和document_ids"""
+    params = {"id": entity_id}
+    
+    if new_chunk_ids is not None:
+        params["new_chunk_ids"] = new_chunk_ids
+    
+    if new_document_ids is not None:
+        params["new_document_ids"] = new_document_ids
+    
+    if frequency is not None:
+        params["frequency_increment"] = frequency
+    
+    # 使用纯Cypher语法进行合并和去重
+    query = """
+    MATCH (e:Entity {id: $id})
+    WITH e,
+         CASE WHEN $new_chunk_ids IS NOT NULL 
+              THEN [x IN (e.chunk_ids + $new_chunk_ids) WHERE x IS NOT NULL | x] 
+              ELSE e.chunk_ids END AS merged_chunk_ids,
+         CASE WHEN $new_document_ids IS NOT NULL 
+              THEN [x IN (e.document_ids + $new_document_ids) WHERE x IS NOT NULL | x] 
+              ELSE e.document_ids END AS merged_document_ids,
+         CASE WHEN $frequency_increment IS NOT NULL 
+              THEN e.frequency + $frequency_increment 
+              ELSE e.frequency END AS new_frequency
+    
+    // 去重处理
+    WITH e, 
+         [x IN merged_chunk_ids | x] AS unique_chunk_ids,
+         [x IN merged_document_ids | x] AS unique_document_ids,
+         new_frequency
+    
+    // 手动去重
+    WITH e,
+         REDUCE(acc = [], x IN unique_chunk_ids | 
+           CASE WHEN x IN acc THEN acc ELSE acc + [x] END) AS final_chunk_ids,
+         REDUCE(acc = [], x IN unique_document_ids | 
+           CASE WHEN x IN acc THEN acc ELSE acc + [x] END) AS final_document_ids,
+         new_frequency
+    
+    SET e.chunk_ids = final_chunk_ids,
+        e.document_ids = final_document_ids,
+        e.frequency = new_frequency,
+        e.updated_at = datetime()
+    RETURN e
+    """
+    
+    with driver.session() as session:
+        result = session.run(query, **params)
         record = result.single()
         return dict(record[0]) if record else None
 

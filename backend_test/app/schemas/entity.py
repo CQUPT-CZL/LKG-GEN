@@ -15,7 +15,7 @@ class EntityBase(BaseModel):
 
 
 class EntityCreate(EntityBase):
-    document_id: Optional[int] = None  # 关联的文档ID
+    document_ids: Optional[List[int]] = None  # 关联的文档ID
 
 class Entity(EntityBase):
     id: str

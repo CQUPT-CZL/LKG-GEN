@@ -2,18 +2,18 @@
 
 from typing import List
 
-from sqlalchemy.util import NoneType
 from app.crud import crud_sqlite
 from app.crud.crud_sqlite import create_text_chunk
-from app.crud.crud_graph import create_entity, create_relation, create_document_entity_relation, create_resource_node
+from app.crud.crud_graph import create_entity, create_relation, create_document_entity_relation, create_resource_node, update_entity, get_entity_by_id
 from app.schemas.entity import EntityCreate, RelationCreate, DocumentEntityRelationCreate
 from app.schemas.resource import ResourceCreate
 from app.db.sqlite_session import SessionLocal
 from app.db.neo4j_session import get_neo4j_driver
 from app.core.chunker import chunk_document_by_lines
-from app.core.entity_extractor import extract_entities_from_chunk, simulate_entity_disambiguation
+from app.core.entity_extractor import extract_entities_from_chunk
 from app.core.relation_extractor import extract_relations_from_entities
 import time
+from app.core.disambiguation import disambiguate_entities_against_graph
 
 def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, graph_id: str = None, parent_id: str = None):
     """
@@ -99,8 +99,8 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             
         
         # === 3. 实体链接与消歧 ===
-        print("🔗 开始实体链接与消歧...")
-        disambiguated_entities = simulate_entity_disambiguation(all_entities)
+        print("🔗 开始实体链接与消歧(全图谱范围)...")
+        disambiguated_entities = disambiguate_entities_against_graph(all_entities, neo4j_driver, graph_id)
         print(f"✅ 实体消歧完成，最终实体数: {len(disambiguated_entities)}")
         
         # === 4. 图谱入库 ===
@@ -140,7 +140,7 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
         
         entity_id_mapping = {}
         
-        # 4.1 创建实体节点
+        # 4.1 创建实体节点（若已存在，则不重复创建，只建立文档关系）
         for entity_data in disambiguated_entities.values():
             # 收集该实体的所有chunk_ids
             chunk_ids = []
@@ -150,20 +150,60 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
                 if orig_name == entity_name and orig_entity.get("chunk_id"):
                     chunk_ids.append(orig_entity["chunk_id"])
             
+            existing_id = entity_data.get('existing_id')
+            entity_name = entity_data.get('text', entity_data.get('name', '未知'))
+            entity_type = entity_data.get('type', entity_data.get('entity_type', '未知'))
+
+            if existing_id:
+                # 已存在：更新实体的chunk_ids和document_ids，然后建立文档-实体关系
+                entity_id_mapping[f"{entity_name}_{entity_type}"] = existing_id
+                print(f"  ♻️ 复用已有实体: {entity_name} ({entity_type}) -> {existing_id}")
+                
+                try:
+                    # 先获取现有实体的信息，特别是已有的document_ids
+                    existing_entity = get_entity_by_id(neo4j_driver, existing_id)
+                    existing_document_ids = existing_entity.get('document_ids', []) if existing_entity else []
+                    
+                    # 合并document_ids：现有的 + 当前文档ID
+                    merged_document_ids = existing_document_ids + [document.id]
+                    
+                    # 更新现有实体的chunk_ids和document_ids
+                    updated_entity = update_entity(
+                        neo4j_driver, 
+                        existing_id, 
+                        new_chunk_ids=chunk_ids,
+                        new_document_ids=[document.id],  # 只传递新的document_id，让update_entity函数处理合并
+                        frequency=entity_data.get('frequency', 1)
+                    )
+                    if updated_entity:
+                        print(f"  ✅ 更新实体成功: {entity_name} - 新增分块: {chunk_ids}, 文档IDs: {merged_document_ids}")
+                    else:
+                        print(f"  ⚠️ 更新实体失败: {entity_name}")
+                    
+                    # 建立文档-实体关系
+                    doc_entity_relation = DocumentEntityRelationCreate(
+                        document_id=neo4j_document_id,
+                        entity_id=existing_id,
+                        relation_type="HAS_ENTITY"
+                    )
+                    create_document_entity_relation(neo4j_driver, doc_entity_relation)
+                except Exception as e:
+                    print(f"  ❌ 更新实体或建立文档-实体关系失败(已有实体): {entity_name} - {e}")
+                continue
+
+            # 否则创建新实体
             entity_create = EntityCreate(
-                name=entity_data.get('text', entity_data.get('name', '未知')),
-                entity_type=entity_data.get('type', entity_data.get('entity_type', '未知')),
+                name=entity_name,
+                entity_type=entity_type,
                 description=entity_data.get('description'),
                 graph_id=graph_id or "default-graph-id",
                 chunk_ids=list(set(chunk_ids)),  # 去重
-                document_id=document.id,
+                document_ids=[document.id],
                 frequency=entity_data.get('frequency', 1)
             )
             
             try:
                 created_entity = create_entity(neo4j_driver, entity_create)
-                entity_name = entity_data.get('text', entity_data.get('name', '未知'))
-                entity_type = entity_data.get('type', entity_data.get('entity_type', '未知'))
                 entity_id_mapping[f"{entity_name}_{entity_type}"] = created_entity['id']
                 print(f"  ✅ 创建实体: {entity_name} ({entity_type}) - 分块: {chunk_ids}")
                 
@@ -175,7 +215,6 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
                 )
                 create_document_entity_relation(neo4j_driver, doc_entity_relation)
             except Exception as e:
-                entity_name = entity_data.get('text', entity_data.get('name', '未知'))
                 print(f"  ❌ 创建实体失败: {entity_name} - {e}")
         
         # 4.2 创建关系
