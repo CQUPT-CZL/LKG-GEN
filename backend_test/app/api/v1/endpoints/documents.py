@@ -54,18 +54,43 @@ def get_document(
 def delete_document(
     *,
     db: Session = Depends(deps.get_db),
+    driver: Driver = Depends(deps.get_neo4j_driver),
     document_id: int
 ):
     """
-    删除文档
+    删除文档及其相关的实体和关系
     """
     try:
+        # 1. 检查文档是否存在
         document = crud_sqlite.get_source_document(db=db, document_id=document_id)
         if not document:
             raise HTTPException(status_code=404, detail="文档不存在")
         
-        crud_sqlite.delete_source_document(db=db, document_id=document_id)
-        return {"message": "文档删除成功"}
+        # 2. 清理Neo4j中的相关实体
+        cleanup_result = crud_graph.cleanup_entities_for_document(driver, document_id)
+        print(f"🧹 实体清理完成: 删除了 {cleanup_result['deleted_count']} 个实体，更新了 {cleanup_result['updated_count']} 个实体")
+        
+        # 3. 删除Neo4j中的文档节点
+        document_deleted = crud_graph.delete_document_node(driver, document_id)
+        if document_deleted:
+            print(f"🗑️ Neo4j文档节点删除成功: document_id={document_id}")
+        else:
+            print(f"⚠️ Neo4j文档节点未找到或删除失败: document_id={document_id}")
+        
+        # 4. 删除SQLite中的文档记录
+        sqlite_deleted = crud_sqlite.delete_source_document(db=db, document_id=document_id)
+        if not sqlite_deleted:
+            raise HTTPException(status_code=500, detail="SQLite文档删除失败")
+        
+        return {
+            "message": "文档删除成功",
+            "details": {
+                "deleted_entities": cleanup_result['deleted_entities'],
+                "updated_entities": cleanup_result['updated_entities'],
+                "neo4j_document_deleted": document_deleted,
+                "sqlite_document_deleted": sqlite_deleted
+            }
+        }
     except HTTPException:
         raise
     except Exception as e:

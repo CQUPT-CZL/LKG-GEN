@@ -312,6 +312,78 @@ def delete_entity(driver: Driver, entity_id: str) -> bool:
         return record["deleted_count"] > 0 if record else False
 
 
+def cleanup_entities_for_document(driver: Driver, document_id: int) -> dict:
+    """清理文档删除时的相关实体：从实体的document_ids中移除该文档ID，如果实体只关联该文档则删除整个实体"""
+    with driver.session() as session:
+        # 首先找到所有包含该document_id的实体
+        find_entities_query = """
+        MATCH (e:Entity)
+        WHERE $document_id IN e.document_ids
+        RETURN e.id as entity_id, e.name as entity_name, e.document_ids as document_ids
+        """
+        
+        entities_result = session.run(find_entities_query, document_id=document_id)
+        entities_to_update = []
+        entities_to_delete = []
+        
+        for record in entities_result:
+            entity_id = record["entity_id"]
+            entity_name = record["entity_name"]
+            document_ids = record["document_ids"]
+            
+            # 如果实体只关联这一个文档，标记为删除
+            if len(document_ids) == 1 and document_ids[0] == document_id:
+                entities_to_delete.append({"id": entity_id, "name": entity_name})
+            else:
+                # 否则从document_ids中移除该文档ID
+                entities_to_update.append({"id": entity_id, "name": entity_name})
+        
+        # 删除只关联该文档的实体
+        deleted_entities = []
+        for entity in entities_to_delete:
+            delete_query = """
+            MATCH (e:Entity {id: $entity_id})
+            DETACH DELETE e
+            RETURN count(e) as deleted_count
+            """
+            delete_result = session.run(delete_query, entity_id=entity["id"])
+            if delete_result.single()["deleted_count"] > 0:
+                deleted_entities.append(entity["name"])
+        
+        # 更新其他实体的document_ids
+        updated_entities = []
+        for entity in entities_to_update:
+            update_query = """
+            MATCH (e:Entity {id: $entity_id})
+            SET e.document_ids = [x IN e.document_ids WHERE x <> $document_id]
+            RETURN e.name as entity_name
+            """
+            update_result = session.run(update_query, entity_id=entity["id"], document_id=document_id)
+            record = update_result.single()
+            if record:
+                updated_entities.append(record["entity_name"])
+        
+        return {
+            "deleted_entities": deleted_entities,
+            "updated_entities": updated_entities,
+            "deleted_count": len(deleted_entities),
+            "updated_count": len(updated_entities)
+        }
+
+
+def delete_document_node(driver: Driver, document_id: int) -> bool:
+    """删除Neo4j中的文档节点及其关系"""
+    query = """
+    MATCH (d:Document {source_document_id: $document_id})
+    DETACH DELETE d
+    RETURN count(d) as deleted_count
+    """
+    with driver.session() as session:
+        result = session.run(query, document_id=document_id)
+        record = result.single()
+        return record["deleted_count"] > 0 if record else False
+
+
 # === 关系相关操作 ===
 def create_relation(driver: Driver, relation: RelationCreate) -> dict:
     """在Neo4j中创建关系，如果相同类型的关系已存在则不重复创建"""
