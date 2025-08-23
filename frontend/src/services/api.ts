@@ -56,9 +56,12 @@ export interface Entity {
 
 export interface Relationship {
   id: string;
-  type: string;
-  start_node_id: string;
-  end_node_id: string;
+  relation_type: string;
+  source_entity_id: string;
+  target_entity_id: string;
+  description?: string;
+  confidence?: number;
+  graph_id: string;
   properties?: Record<string, any>;
 }
 
@@ -200,7 +203,7 @@ export const apiService = {
 
   // 实体管理接口
   getEntities: (graphId: string): Promise<Entity[]> => 
-    api.get(`/graphs/${graphId}/entities`),
+    api.get(`/entities/?graph_id=${graphId}`),
   createEntity: (data: EntityCreateRequest): Promise<Entity> => 
     api.post('/entities', data),
   updateEntity: (entityId: string, data: EntityCreateRequest): Promise<Entity> => 
@@ -210,7 +213,7 @@ export const apiService = {
 
   // 关系管理接口
   getRelations: (graphId: string): Promise<Relationship[]> => 
-    api.get(`/graphs/${graphId}/relations`),
+    api.get(`/relations/?graph_id=${graphId}`),
   createRelation: (data: RelationCreateRequest): Promise<Relationship> => 
     api.post('/relations', data),
   deleteRelation: (relationId: string): Promise<{ message: string }> => 

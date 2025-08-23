@@ -215,7 +215,8 @@ const EntityManager: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 250,
+      fixed: 'right',
       render: (_, record) => (
         <Space size="middle">
           <Button
@@ -360,6 +361,7 @@ const EntityManager: React.FC = () => {
             dataSource={entities}
             rowKey="id"
             loading={loading}
+            scroll={{ x: 1200 }}
             pagination={{
               total: entities.length,
               pageSize: 10,

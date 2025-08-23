@@ -156,10 +156,10 @@ const GraphVisualization: React.FC = () => {
 
     const edges: GraphEdge[] = subgraph.relationships.map(rel => ({
       id: rel.id.toString(),
-      from: rel.start_node_id.toString(),
-      to: rel.end_node_id.toString(),
-      label: showLabels ? rel.type : '',
-      type: rel.type,
+      from: rel.source_entity_id.toString(),
+      to: rel.target_entity_id.toString(),
+      label: showLabels ? rel.relation_type : '',
+      type: rel.relation_type,
       width: edgeWidth,
       arrows: { to: { enabled: true } }
     }));

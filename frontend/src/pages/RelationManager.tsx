@@ -133,7 +133,7 @@ const RelationManager: React.FC = () => {
   };
 
   const handleView = (record: Relationship) => {
-    message.info(`查看关系: ${record.type}`);
+    message.info(`查看关系: ${record.relation_type}`);
     // 这里可以实现关系详情查看功能
   };
 
@@ -154,11 +154,11 @@ const RelationManager: React.FC = () => {
   const handleEdit = (record: Relationship) => {
     setEditingRelation(record);
     form.setFieldsValue({
-      source_entity_id: record.start_node_id,
-      target_entity_id: record.end_node_id,
-      relation_type: record.type,
-      confidence: record.properties?.confidence || 1.0,
-      description: record.properties?.description || ''
+      source_entity_id: record.source_entity_id,
+      target_entity_id: record.target_entity_id,
+      relation_type: record.relation_type,
+      confidence: record.confidence || 1.0,
+      description: record.description || ''
     });
     setIsModalVisible(true);
   };
@@ -202,6 +202,12 @@ const RelationManager: React.FC = () => {
     form.resetFields();
   };
 
+  // 根据实体ID获取实体名称
+  const getEntityNameById = (entityId: string): string => {
+    const entity = entities.find(e => e.id === entityId);
+    return entity ? `${entity.name} (${entity.type})` : entityId;
+  };
+
   const columns: ColumnsType<Relationship> = [
     {
       title: 'ID',
@@ -212,17 +218,17 @@ const RelationManager: React.FC = () => {
     },
     {
       title: '关系类型',
-      dataIndex: 'type',
-      key: 'type',
+      dataIndex: 'relation_type',
+      key: 'relation_type',
       ellipsis: true
     },
     {
       title: '起始节点',
-      dataIndex: 'start_node_id',
-      key: 'start_node_id',
+      dataIndex: 'source_entity_id',
+      key: 'source_entity_id',
       ellipsis: true,
-      render: (nodeId: string) => (
-        <span style={{ color: '#1890ff' }}>{nodeId}</span>
+      render: (entityId: string) => (
+        <span style={{ color: '#1890ff' }}>{getEntityNameById(entityId)}</span>
       )
     },
     {
@@ -236,29 +242,33 @@ const RelationManager: React.FC = () => {
     },
     {
       title: '结束节点',
-      dataIndex: 'end_node_id',
-      key: 'end_node_id',
+      dataIndex: 'target_entity_id',
+      key: 'target_entity_id',
       ellipsis: true,
-      render: (nodeId: string) => (
-        <span style={{ color: '#fa8c16' }}>{nodeId}</span>
+      render: (entityId: string) => (
+        <span style={{ color: '#fa8c16' }}>{getEntityNameById(entityId)}</span>
       )
     },
     {
       title: '属性',
-      dataIndex: 'properties',
       key: 'properties',
       ellipsis: true,
-      render: (properties: any) => {
-        if (!properties || Object.keys(properties).length === 0) {
-          return '无属性';
+      render: (_, record: Relationship) => {
+        const properties = [];
+        if (record.description) {
+          properties.push(`描述: ${record.description}`);
         }
-        return JSON.stringify(properties);
+        if (record.confidence !== undefined) {
+          properties.push(`置信度: ${record.confidence}`);
+        }
+        return properties.length > 0 ? properties.join('; ') : '无属性';
       }
     },
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 250,
+      fixed: 'right',
       render: (_, record) => (
         <Space size="middle">
           <Button
@@ -401,6 +411,7 @@ const RelationManager: React.FC = () => {
             dataSource={relationships}
             rowKey="id"
             loading={loading}
+            scroll={{ x: 1400 }}
             pagination={{
               total: relationships.length,
               pageSize: 10,

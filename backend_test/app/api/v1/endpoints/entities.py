@@ -2,12 +2,20 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from neo4j import Driver
+from neo4j.time import DateTime as Neo4jDateTime
 from typing import List
+from datetime import datetime
 from app.api import deps
 from app.schemas import entity as entity_schemas
 from app.crud import crud_entity
 
 router = APIRouter()
+
+def convert_neo4j_datetime(value):
+    """转换 Neo4j DateTime 对象为 Python datetime 对象"""
+    if isinstance(value, Neo4jDateTime):
+        return value.to_native()
+    return value
 
 @router.get("/", response_model=List[entity_schemas.Entity])
 def get_entities(
@@ -30,8 +38,7 @@ def get_entities(
                 description=entity.get("description", ""),
                 graph_id=entity.get("graph_id", graph_id),
                 frequency=entity.get("frequency", 0),
-                created_at=entity.get("created_at"),
-                updated_at=entity.get("updated_at"),
+                created_at=convert_neo4j_datetime(entity.get("created_at")),
                 chunk_ids=entity.get("chunk_ids", [])
             )
             for entity in entities
@@ -57,8 +64,8 @@ def create_entity(
             description=created_entity.get("description", ""),
             graph_id=created_entity.get("graph_id"),
             frequency=created_entity.get("frequency", 0),
-            created_at=created_entity.get("created_at"),
-            updated_at=created_entity.get("updated_at"),
+            created_at=convert_neo4j_datetime(created_entity.get("created_at")),
+            updated_at=convert_neo4j_datetime(created_entity.get("updated_at")),
             chunk_ids=created_entity.get("chunk_ids", [])
         )
     except Exception as e:
@@ -85,8 +92,8 @@ def get_entity(
             description=entity.get("description", ""),
             graph_id=entity.get("graph_id"),
             frequency=entity.get("frequency", 0),
-            created_at=entity.get("created_at"),
-            updated_at=entity.get("updated_at"),
+            created_at=convert_neo4j_datetime(entity.get("created_at")),
+            updated_at=convert_neo4j_datetime(entity.get("updated_at")),
             chunk_ids=entity.get("chunk_ids", [])
         )
     except HTTPException:
