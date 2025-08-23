@@ -5,60 +5,64 @@ import {
   Button,
   Space,
   Typography,
-  Tag,
-  Modal,
-  Form,
-  Input,
   Select,
   Statistic,
   Row,
   Col,
-  Tooltip,
-  Popconfirm,
   message,
-  Badge,
-  Descriptions
+  Empty,
+  Modal,
+  Form,
+  Input,
+  Popconfirm
 } from 'antd';
 import {
-  EditOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  SearchOutlined,
   NodeIndexOutlined,
   EyeOutlined,
-  FilterOutlined
+  DatabaseOutlined,
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { apiService, Entity, Graph } from '../services/api';
+import { apiService, Graph, SourceResource, Entity, EntityCreateRequest } from '../services/api';
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 const { Option } = Select;
-const { TextArea } = Input;
 
 const EntityManager: React.FC = () => {
   const [entities, setEntities] = useState<Entity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isDetailVisible, setIsDetailVisible] = useState(false);
-  const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
-  const [viewingEntity, setViewingEntity] = useState<Entity | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string>('');
-  const [graphFilter, setGraphFilter] = useState<string>('');
+  const [loading, setLoading] = useState(false);
   const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [documents, setDocuments] = useState<SourceResource[]>([]);
+  const [selectedGraphId, setSelectedGraphId] = useState<string>('');
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadGraphs();
   }, []);
 
-  // 当graphs数组更新时，重新加载实体
   useEffect(() => {
-    if (graphs.length > 0) {
+    if (selectedGraphId) {
+      loadDocuments();
       loadEntities();
+    } else {
+      setDocuments([]);
+      setSelectedDocumentId('');
+      setEntities([]);
     }
-  }, [graphs, graphFilter]);
+  }, [selectedGraphId]);
+
+  useEffect(() => {
+    if (selectedDocumentId) {
+      loadDocumentSubgraph();
+    } else {
+      setEntities([]);
+    }
+  }, [selectedDocumentId]);
 
   const loadGraphs = async () => {
     try {
@@ -70,102 +74,108 @@ const EntityManager: React.FC = () => {
     }
   };
 
+  const loadDocuments = async () => {
+    if (!selectedGraphId) return;
+    
+    try {
+      const documentList = await apiService.getDocuments();
+      // 新API中文档没有graph_ids属性，显示所有文档
+      setDocuments(documentList);
+    } catch (error) {
+      console.error('加载文档列表失败:', error);
+      message.error('加载文档列表失败');
+    }
+  };
+
   const loadEntities = async () => {
+    if (!selectedGraphId) return;
+    
     setLoading(true);
     try {
-      // 如果有选中的图谱，加载该图谱的实体
-      if (graphFilter) {
-        const entityList = await apiService.getEntities(graphFilter);
-        setEntities(entityList);
-      } else {
-        // 否则加载所有图谱的实体
-        const allEntities: Entity[] = [];
-        for (const graph of graphs) {
-          try {
-            const entityList = await apiService.getEntities(graph.id);
-            allEntities.push(...entityList);
-          } catch (error) {
-            console.error(`加载图谱 ${graph.name} 的实体失败:`, error);
-          }
-        }
-        setEntities(allEntities);
-      }
+      const entityList = await apiService.getEntities(selectedGraphId);
+      setEntities(entityList || []);
     } catch (error) {
-      console.error('加载实体失败:', error);
-      message.error('加载实体失败');
+      console.error('加载实体列表失败:', error);
+      message.error('加载实体列表失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDocumentSubgraph = async () => {
+    if (!selectedDocumentId) return;
+    
+    setLoading(true);
+    try {
+      const subgraph = await apiService.getDocumentSubgraph(parseInt(selectedDocumentId));
+      setEntities(subgraph.entities || []);
+    } catch (error) {
+      console.error('加载文档子图谱失败:', error);
+      message.error('加载文档子图谱失败');
     } finally {
       setLoading(false);
     }
   };
 
   const handleView = (record: Entity) => {
-    setViewingEntity(record);
-    setIsDetailVisible(true);
+    message.info(`查看实体: ${record.name}`);
+    // 这里可以实现实体详情查看功能
+  };
+
+  const handleCreate = () => {
+    if (!selectedGraphId) {
+      message.warning('请先选择图谱');
+      return;
+    }
+    setEditingEntity(null);
+    form.resetFields();
+    setIsModalVisible(true);
   };
 
   const handleEdit = (record: Entity) => {
     setEditingEntity(record);
     form.setFieldsValue({
-      ...record,
-      aliases: record.aliases?.join(', ') || ''
+      name: record.name,
+      type: record.type,
+      description: record.properties?.description || ''
     });
     setIsModalVisible(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (record: Entity) => {
     try {
-      await apiService.deleteEntity(id);
-      message.success('删除成功');
-      loadEntities(); // 重新加载实体列表
+      await apiService.deleteEntity(record.id);
+      message.success('实体删除成功');
+      loadEntities();
     } catch (error) {
-      console.error('删除失败:', error);
-      message.error('删除失败');
-    }
-  };
-
-  const handleBatchDelete = async () => {
-    try {
-      await Promise.all(selectedRowKeys.map(id => apiService.deleteEntity(id as string)));
-      setSelectedRowKeys([]);
-      message.success(`批量删除 ${selectedRowKeys.length} 个实体`);
-      loadEntities(); // 重新加载实体列表
-    } catch (error) {
-      console.error('批量删除失败:', error);
-      message.error('批量删除失败');
+      console.error('删除实体失败:', error);
+      message.error('删除实体失败');
     }
   };
 
   const handleModalOk = async () => {
     try {
       const values = await form.validateFields();
-      const aliases = values.aliases ? values.aliases.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-      
+      const entityData: EntityCreateRequest = {
+        name: values.name,
+        type: values.type,
+        description: values.description || '',
+        graph_id: selectedGraphId
+      };
+
       if (editingEntity) {
-        // 更新实体
-        await apiService.updateEntity(editingEntity.id, {
-          name: values.name,
-          type: values.type,
-          description: values.description,
-          graph_id: values.graph_id
-        });
-        message.success('更新成功');
+        await apiService.updateEntity(editingEntity.id, entityData);
+        message.success('实体更新成功');
       } else {
-        // 创建新实体
-        await apiService.createEntity({
-          name: values.name,
-          type: values.type,
-          description: values.description,
-          graph_id: values.graph_id
-        });
-        message.success('创建成功');
+        await apiService.createEntity(entityData);
+        message.success('实体创建成功');
       }
+
       setIsModalVisible(false);
-      setEditingEntity(null);
-      form.resetFields();
-      loadEntities(); // 重新加载实体列表
+      loadEntities();
     } catch (error) {
-      console.error('操作失败:', error);
-      message.error('操作失败');
+      console.error('保存实体失败:', error);
+      message.error('保存实体失败');
     }
   };
 
@@ -175,300 +185,205 @@ const EntityManager: React.FC = () => {
     form.resetFields();
   };
 
-  const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      '钢铁材料': 'red',
-      '生产工艺': 'blue',
-      '性能指标': 'green',
-      '应用领域': 'orange',
-      '设备': 'purple',
-      '缺陷': 'volcano',
-      '化学成分': 'cyan',
-      '热处理工艺': 'geekblue',
-      '机械性能': 'lime',
-      '表面处理': 'magenta',
-      '检测方法': 'gold'
-    };
-    return colors[type] || 'default';
-  };
-
   const columns: ColumnsType<Entity> = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 200,
+      ellipsis: true
+    },
     {
       title: '实体名称',
       dataIndex: 'name',
       key: 'name',
-      filteredValue: searchText ? [searchText] : null,
-      onFilter: (value, record) => {
-        const searchValue = value.toString().toLowerCase();
-        return record.name.toLowerCase().includes(searchValue) ||
-          (record.description?.toLowerCase().includes(searchValue) || false) ||
-          (record.aliases?.some(alias => alias.toLowerCase().includes(searchValue)) || false);
-      },
-      render: (text, record) => (
-        <div>
-          <div style={{ fontWeight: 'bold' }}>{text}</div>
-          {record.aliases && record.aliases.length > 0 && (
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              别名: {record.aliases.join(', ')}
-            </div>
-          )}
-        </div>
-      )
+      ellipsis: true
     },
     {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      filters: [
-        { text: '钢铁材料', value: '钢铁材料' },
-        { text: '生产工艺', value: '生产工艺' },
-        { text: '性能指标', value: '性能指标' },
-        { text: '应用领域', value: '应用领域' },
-        { text: '设备', value: '设备' },
-        { text: '缺陷', value: '缺陷' },
-        { text: '化学成分', value: '化学成分' },
-        { text: '热处理工艺', value: '热处理工艺' },
-        { text: '机械性能', value: '机械性能' },
-        { text: '表面处理', value: '表面处理' },
-        { text: '检测方法', value: '检测方法' }
-      ],
-      filteredValue: typeFilter ? [typeFilter] : null,
-      onFilter: (value, record) => record.type === value,
-      render: (type) => (
-        <Tag color={getTypeColor(type)}>{type}</Tag>
-      )
-    },
-    {
-      title: '频次',
-      dataIndex: 'frequency',
-      key: 'frequency',
-      sorter: (a, b) => a.frequency - b.frequency,
-      render: (frequency) => (
-        <Badge 
-          count={frequency} 
-          style={{ backgroundColor: frequency > 100 ? '#52c41a' : '#1890ff' }}
-        />
-      )
-    },
-    {
-      title: '所属图谱',
-      dataIndex: 'graph_id',
-      key: 'graph_id',
-      render: (graphId: string) => {
-        const graph = graphs.find(g => g.id === graphId);
-        return graph ? graph.name : graphId;
-      },
-      filters: graphs.map(graph => ({
-        text: graph.name,
-        value: graph.id
-      })),
-      filteredValue: graphFilter ? [graphFilter] : null,
-      onFilter: (value, record) => record.graph_id === value
+      ellipsis: true
     },
     {
       title: '描述',
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
-      render: (text) => (
-        <Tooltip title={text}>
-          <Text ellipsis style={{ maxWidth: 200 }}>{text}</Text>
-        </Tooltip>
-      )
+      render: (text: string) => text || '暂无描述'
     },
-
     {
       title: '操作',
       key: 'action',
+      width: 200,
       render: (_, record) => (
-        <Space size="small">
-          <Tooltip title="查看详情">
-            <Button 
-              type="text" 
-              icon={<EyeOutlined />} 
-              onClick={() => handleView(record)}
-            />
-          </Tooltip>
-          <Tooltip title="编辑">
-            <Button 
-              type="text" 
-              icon={<EditOutlined />} 
-              onClick={() => handleEdit(record)}
-            />
-          </Tooltip>
-          <Tooltip title="删除">
-            <Popconfirm
-              title="确定要删除这个实体吗？"
-              onConfirm={() => handleDelete(record.id)}
-              okText="确定"
-              cancelText="取消"
+        <Space size="middle">
+          <Button
+            type="link"
+            icon={<EyeOutlined />}
+            onClick={() => handleView(record)}
+          >
+            查看
+          </Button>
+          <Button
+            type="link"
+            icon={<EditOutlined />}
+            onClick={() => handleEdit(record)}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确定要删除这个实体吗？"
+            onConfirm={() => handleDelete(record)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button
+              type="link"
+              danger
+              icon={<DeleteOutlined />}
             >
-              <Button 
-                type="text" 
-                danger 
-                icon={<DeleteOutlined />}
-              />
-            </Popconfirm>
-          </Tooltip>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
-      )
-    }
+      ),
+    },
   ];
-
-  const rowSelection = {
-    selectedRowKeys,
-    onChange: (newSelectedRowKeys: React.Key[]) => {
-      setSelectedRowKeys(newSelectedRowKeys);
-    }
-  };
-
-  const entityTypes = Array.from(new Set(entities.map(e => e.type)));
-  const totalFrequency = entities.reduce((sum, entity) => sum + entity.frequency, 0);
-  const avgFrequency = entities.length > 0 ? Math.round(totalFrequency / entities.length) : 0;
-  const highFreqEntities = entities.filter(e => e.frequency > 100).length;
 
   return (
     <div>
-      <div className="page-header">
-        <Title level={2} className="page-title">🏷️ 实体管理</Title>
-        <Paragraph className="page-description">
-          管理知识图谱中的实体，包括查看、编辑、删除和创建新实体。
-        </Paragraph>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2}>🔍 实体管理</Title>
+        <Paragraph>通过选择图谱和文档来查看实体信息。新的API架构中，实体通过文档子图谱进行管理。</Paragraph>
       </div>
 
-      {/* 统计卡片 */}
-      <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
+      {/* 统计信息 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="实体总数"
+              title="当前实体数"
               value={entities.length}
-              prefix={<NodeIndexOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              prefix={<NodeIndexOutlined style={{ color: '#1890ff' }} />}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="实体类型"
-              value={entityTypes.length}
-              valueStyle={{ color: '#52c41a' }}
+              title="可用图谱数"
+              value={graphs.length}
+              prefix={<DatabaseOutlined style={{ color: '#52c41a' }} />}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="平均频次"
-              value={avgFrequency}
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="高频实体"
-              value={highFreqEntities}
-              suffix={`/ ${entities.length}`}
-              valueStyle={{ color: '#fa8c16' }}
+              title="可用文档数"
+              value={documents.length}
+              prefix={<DatabaseOutlined style={{ color: '#fa8c16' }} />}
             />
           </Card>
         </Col>
       </Row>
 
-      <Card>
-        {/* 工具栏 */}
-        <div className="toolbar">
+      {/* 筛选器 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space wrap>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-            >
-              新建实体
-            </Button>
-            {selectedRowKeys.length > 0 && (
-              <Popconfirm
-                title={`确定要删除选中的 ${selectedRowKeys.length} 个实体吗？`}
-                onConfirm={handleBatchDelete}
-                okText="确定"
-                cancelText="取消"
+            <div>
+              <span style={{ marginRight: 8 }}>选择图谱:</span>
+              <Select
+                placeholder="请选择图谱"
+                style={{ width: 200 }}
+                value={selectedGraphId || undefined}
+                onChange={(value) => {
+                  setSelectedGraphId(value || '');
+                  setSelectedDocumentId('');
+                }}
+                allowClear
               >
-                <Button danger icon={<DeleteOutlined />}>
-                  批量删除 ({selectedRowKeys.length})
-                </Button>
-              </Popconfirm>
-            )}
+                {graphs.map(graph => (
+                  <Option key={graph.id} value={graph.id}>
+                    {graph.name}
+                  </Option>
+                ))}
+              </Select>
+            </div>
           </Space>
           
-          <Space wrap>
-            <Input.Search
-              placeholder="搜索实体名称、描述或别名"
-              allowClear
-              style={{ width: 280 }}
-              onSearch={setSearchText}
-              onChange={(e) => !e.target.value && setSearchText('')}
-            />
-            <Select
-              placeholder="类型筛选"
-              allowClear
-              style={{ width: 120 }}
-              onChange={setTypeFilter}
-            >
-              {entityTypes.map(type => (
-                <Option key={type} value={type}>{type}</Option>
-              ))}
-            </Select>
-            <Select
-              placeholder="图谱筛选"
-              allowClear
-              style={{ width: 150 }}
-              onChange={(value) => {
-                setGraphFilter(value || '');
-                // 当图谱筛选改变时重新加载实体
-                setTimeout(() => loadEntities(), 100);
-              }}
-            >
-              {graphs.map((graph) => (
-                <Option key={graph.id} value={graph.id}>
-                  {graph.name}
-                </Option>
-              ))}
-            </Select>
-          </Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleCreate}
+            disabled={!selectedGraphId}
+          >
+            创建实体
+          </Button>
         </div>
-
-        {/* 表格 */}
-        <Table
-          rowSelection={rowSelection}
-          columns={columns}
-          dataSource={entities}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            total: entities.length,
-            pageSize: 10,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
-          }}
-        />
+        
+        <Space wrap>
+          
+          {selectedGraphId && (
+            <div>
+              <span style={{ marginRight: 8 }}>选择文档:</span>
+              <Select
+                placeholder="请选择文档"
+                style={{ width: 200 }}
+                value={selectedDocumentId || undefined}
+                onChange={(value) => setSelectedDocumentId(value || '')}
+                allowClear
+              >
+                {documents.map(doc => (
+                   <Option key={doc.id} value={doc.id.toString()}>
+                     {doc.filename}
+                   </Option>
+                 ))}
+              </Select>
+            </div>
+          )}
+        </Space>
       </Card>
 
-      {/* 编辑/新建模态框 */}
+      {/* 实体列表 */}
+      <Card>
+        {!selectedGraphId ? (
+          <Empty
+            description="请先选择一个图谱"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={entities}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              total: entities.length,
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
+            }}
+          />
+        )}
+      </Card>
+
+      {/* 创建/编辑实体模态框 */}
       <Modal
-        title={editingEntity ? '编辑实体' : '新建实体'}
+        title={editingEntity ? '编辑实体' : '创建实体'}
         open={isModalVisible}
         onOk={handleModalOk}
         onCancel={handleModalCancel}
-        width={600}
+        okText="确定"
+        cancelText="取消"
       >
         <Form
           form={form}
           layout="vertical"
+          name="entityForm"
         >
           <Form.Item
             name="name"
@@ -481,119 +396,21 @@ const EntityManager: React.FC = () => {
           <Form.Item
             name="type"
             label="实体类型"
-            rules={[{ required: true, message: '请选择实体类型' }]}
+            rules={[{ required: true, message: '请输入实体类型' }]}
           >
-            <Select placeholder="请选择实体类型">
-              <Option value="钢铁材料">钢铁材料</Option>
-              <Option value="生产工艺">生产工艺</Option>
-              <Option value="性能指标">性能指标</Option>
-              <Option value="应用领域">应用领域</Option>
-              <Option value="设备">设备</Option>
-              <Option value="缺陷">缺陷</Option>
-              <Option value="化学成分">化学成分</Option>
-              <Option value="热处理工艺">热处理工艺</Option>
-              <Option value="机械性能">机械性能</Option>
-              <Option value="表面处理">表面处理</Option>
-              <Option value="检测方法">检测方法</Option>
-            </Select>
+            <Input placeholder="请输入实体类型" />
           </Form.Item>
           
           <Form.Item
             name="description"
             label="描述"
           >
-            <TextArea 
-              rows={3} 
-              placeholder="请输入实体描述" 
+            <Input.TextArea 
+              placeholder="请输入实体描述（可选）" 
+              rows={3}
             />
           </Form.Item>
-          
-          <Form.Item
-            name="aliases"
-            label="别名"
-            help="多个别名用逗号分隔"
-          >
-            <Input placeholder="请输入别名，用逗号分隔" />
-          </Form.Item>
-          
-          <Form.Item
-            name="graph_id"
-            label="所属图谱"
-            rules={[{ required: true, message: '请选择所属图谱' }]}
-          >
-            <Select placeholder="请选择所属图谱">
-              {graphs.map((graph) => (
-                <Option key={graph.id} value={graph.id}>
-                  {graph.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
         </Form>
-      </Modal>
-
-      {/* 详情模态框 */}
-      <Modal
-        title="实体详情"
-        open={isDetailVisible}
-        onCancel={() => setIsDetailVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setIsDetailVisible(false)}>
-            关闭
-          </Button>
-        ]}
-        width={700}
-      >
-        {viewingEntity && (
-          <div>
-            <Descriptions column={2} bordered>
-              <Descriptions.Item label="实体名称" span={2}>
-                <Text strong style={{ fontSize: '16px' }}>{viewingEntity.name}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="类型">
-                <Tag color={getTypeColor(viewingEntity.type)}>{viewingEntity.type}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="频次">
-                <Badge 
-                  count={viewingEntity.frequency} 
-                  style={{ backgroundColor: viewingEntity.frequency > 100 ? '#52c41a' : '#1890ff' }}
-                />
-              </Descriptions.Item>
-              <Descriptions.Item label="所属图谱" span={2}>
-                {(() => {
-                  const graph = graphs.find(g => g.id === viewingEntity.graph_id);
-                  return graph ? graph.name : viewingEntity.graph_id;
-                })()}
-              </Descriptions.Item>
-              {viewingEntity.description && (
-                <Descriptions.Item label="描述" span={2}>
-                  {viewingEntity.description}
-                </Descriptions.Item>
-              )}
-              {viewingEntity.aliases && viewingEntity.aliases.length > 0 && (
-                <Descriptions.Item label="别名" span={2}>
-                  {viewingEntity.aliases.map(alias => (
-                    <Tag key={alias} style={{ marginBottom: 4 }}>{alias}</Tag>
-                  ))}
-                </Descriptions.Item>
-              )}
-              <Descriptions.Item label="创建时间">
-                {(() => {
-                  const date = new Date(viewingEntity.created_at);
-                  return date.toLocaleString('zh-CN', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
-                })()}
-              </Descriptions.Item>
-            </Descriptions>
-            
-
-          </div>
-        )}
       </Modal>
     </div>
   );

@@ -11,7 +11,8 @@ import {
   DatabaseOutlined,
   ShareAltOutlined,
   UnorderedListOutlined,
-  FolderOutlined
+  FolderOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -50,6 +51,10 @@ const Sidebar: React.FC = () => {
         {
           key: '/manager',
           label: '图谱概览',
+        },
+        {
+          key: '/documents',
+          label: '文档管理',
         },
         {
           key: '/entities',

@@ -1,204 +1,100 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card,
-  Tree,
+  Table,
   Button,
   Space,
   Typography,
   Modal,
   Form,
   Input,
-  Select,
   message,
   Popconfirm,
   Row,
   Col,
-  Statistic,
   Tag,
-  Tooltip
+  Select
 } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  FolderOutlined,
-  FolderOpenOutlined,
-  DatabaseOutlined,
-  InfoCircleOutlined
+  EyeOutlined
 } from '@ant-design/icons';
-import { apiService, Category, Graph } from '../services/api';
-import type { DataNode } from 'antd/es/tree';
+import { apiService, Category, Graph, SourceResource, Subgraph } from '../services/api';
 
-const { Title, Paragraph, Text } = Typography;
-const { Option } = Select;
+const { Title } = Typography;
 const { TextArea } = Input;
-
-interface TreeNode extends DataNode {
-  key: string;
-  title: React.ReactNode;
-  children?: TreeNode[];
-  category: Category;
-}
+const { Option } = Select;
 
 const CategoryManager: React.FC = () => {
-  const [categoryTree, setCategoryTree] = useState<Category | null>(null);
-  const [treeData, setTreeData] = useState<TreeNode[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [graphs, setGraphs] = useState<Graph[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [categoryGraphs, setCategoryGraphs] = useState<Graph[]>([]);
+  const [subgraph, setSubgraph] = useState<Subgraph | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isGraphModalVisible, setIsGraphModalVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(true);
   const [form] = Form.useForm();
-  const [graphForm] = Form.useForm();
 
   useEffect(() => {
-    loadCategoryTree();
+    loadData();
   }, []);
 
-  const loadCategoryTree = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const tree = await apiService.getCategoryTree();
-      setCategoryTree(tree);
-      const treeNodes = buildTreeData(tree);
-      setTreeData(treeNodes ? [treeNodes] : []);
-      
-      // 默认选中根分类
-      if (tree) {
-        setSelectedCategory(tree);
-        loadCategoryGraphs(tree.id);
-      }
+      // 注意：新API中没有获取所有分类的接口，这里只能获取图谱列表
+      const graphsData = await apiService.getGraphs();
+      setGraphs(graphsData);
+      // 暂时设置空的分类列表，因为API不支持获取所有分类
+      setCategories([]);
     } catch (error) {
-      console.error('加载分类树失败:', error);
-      message.error('加载分类树失败');
+      console.error('加载数据失败:', error);
+      message.error('加载数据失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const buildTreeData = (category: Category): TreeNode | null => {
-    if (!category) return null;
-
-    const node: TreeNode = {
-      key: category.id,
-      title: (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Space>
-            {category.level === 1 ? (
-              <DatabaseOutlined style={{ color: '#722ed1' }} />
-            ) : category.level === 0 ? (
-              <FolderOpenOutlined style={{ color: '#1890ff' }} />
-            ) : (
-              <FolderOutlined style={{ color: '#52c41a' }} />
-            )}
-            <Text strong={category.level === 0}>{category.name}</Text>
-          </Space>
-          <Space size="small">
-            <Tooltip title={category.level === 0 ? "添加图谱" : "添加子分类"}>
-              <Button
-                type="text"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (category.level === 0) {
-                    handleAddGraph();
-                  } else {
-                    handleAddCategory(category.id);
-                  }
-                }}
-              />
-            </Tooltip>
-            {category.id !== 'root' && (
-              <>
-                <Tooltip title="编辑分类">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditCategory(category);
-                    }}
-                  />
-                </Tooltip>
-                <Tooltip title="删除分类">
-                  <Popconfirm
-                    title="确定要删除这个分类吗？"
-                    description="删除分类将同时删除其下所有子分类和图谱，此操作不可恢复！"
-                    onConfirm={(e) => {
-                      e?.stopPropagation();
-                      handleDeleteCategory(category.id);
-                    }}
-                    okText="确定"
-                    cancelText="取消"
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </Popconfirm>
-                </Tooltip>
-              </>
-            )}
-          </Space>
-        </div>
-      ),
-      category,
-      children: category.children?.map(child => buildTreeData(child)).filter(Boolean) as TreeNode[]
-    };
-
-    return node;
-  };
-
-  const loadCategoryGraphs = async (categoryId: string) => {
+  const loadCategorySubgraph = async (categoryId: string) => {
     try {
-      const graphs = await apiService.getCategoryGraphs(categoryId);
-      setCategoryGraphs(graphs);
+      const subgraphData = await apiService.getCategorySubgraph(categoryId);
+      setSubgraph(subgraphData);
     } catch (error) {
-      console.error('加载分类图谱失败:', error);
-      message.error('加载分类图谱失败');
+      console.error('加载分类子图谱失败:', error);
+      message.error('加载分类子图谱失败');
     }
   };
 
-  const handleTreeSelect = (selectedKeys: React.Key[], info: any) => {
-    if (selectedKeys.length > 0) {
-      const selectedNode = info.node as TreeNode;
-      setSelectedCategory(selectedNode.category);
-      loadCategoryGraphs(selectedNode.category.id);
-    }
+  const handleView = (category: Category) => {
+    setSelectedCategory(category);
+    loadCategorySubgraph(category.id);
   };
 
-  const handleAddCategory = (parentId: string) => {
+  const handleAdd = () => {
     setEditingCategory(null);
     form.resetFields();
-    form.setFieldsValue({ parent_id: parentId });
     setIsModalVisible(true);
   };
 
-  const handleAddGraph = () => {
-    graphForm.resetFields();
-    setIsGraphModalVisible(true);
-  };
-
-  const handleEditCategory = (category: Category) => {
+  const handleEdit = (category: Category) => {
     setEditingCategory(category);
     form.setFieldsValue({
-      name: category.name,
-      description: category.description
+      name: category.name
     });
     setIsModalVisible(true);
   };
 
-  const handleDeleteCategory = async (categoryId: string) => {
+  const handleDelete = async (categoryId: string) => {
     try {
       await apiService.deleteCategory(categoryId);
       message.success('分类删除成功');
-      loadCategoryTree();
+      loadData();
+      if (selectedCategory?.id === categoryId) {
+        setSelectedCategory(null);
+        setSubgraph(null);
+      }
     } catch (error) {
       console.error('删除分类失败:', error);
       message.error('删除分类失败');
@@ -210,359 +106,175 @@ const CategoryManager: React.FC = () => {
       const values = await form.validateFields();
       
       if (editingCategory) {
-        // 更新分类
-        await apiService.updateCategory(editingCategory.id, {
-          name: values.name,
-          description: values.description
-        });
-        message.success('分类更新成功');
+        // 注意：新API中没有更新分类的接口，这里只是示例
+        message.info('当前API不支持更新分类功能');
       } else {
-        // 创建分类
-        const newCategory = await apiService.createCategory({
+        await apiService.createCategory({
           name: values.name,
-          description: values.description,
-          parent_id: values.parent_id
+          parent_id: 'root'
         });
-        
-        // 如果是创建一级分类（父分类是root），同时创建对应的知识图谱
-        if (values.parent_id === 'root') {
-          try {
-            const graphName = values.graphName || `${values.name}知识图谱`;
-            const graphDescription = values.graphDescription || `基于${values.name}分类的知识图谱`;
-            const graphDomain = values.graphDomain || (values.name.includes('钢铁') || values.name.includes('冶金') ? 'steel' : 'general');
-            
-            await apiService.createGraph({
-              name: graphName,
-              description: graphDescription,
-              domain: graphDomain,
-              category_id: newCategory.id
-            });
-            
-            message.success('分类和对应知识图谱创建成功');
-          } catch (graphError) {
-            console.error('创建知识图谱失败:', graphError);
-            message.warning('分类创建成功，但知识图谱创建失败');
-          }
-        } else {
-          message.success('分类创建成功');
-        }
+        message.success('分类创建成功');
+        loadData();
       }
       
       setIsModalVisible(false);
-      loadCategoryTree();
+      form.resetFields();
     } catch (error) {
       console.error('操作失败:', error);
       message.error('操作失败');
     }
   };
 
-  const handleModalCancel = () => {
-    setIsModalVisible(false);
-    setEditingCategory(null);
-    form.resetFields();
-  };
-
-  const handleGraphModalOk = async () => {
-    try {
-      const values = await graphForm.validateFields();
-      const graphData = {
-        name: values.name,
-        description: values.description || '',
-        domain: values.domain || '通用'
-      };
-      await apiService.createGraph(graphData);
-      message.success('图谱创建成功');
-      setIsGraphModalVisible(false);
-      graphForm.resetFields();
-      loadCategoryTree();
-    } catch (error) {
-      console.error('创建图谱失败:', error);
-      message.error('创建图谱失败');
-    }
-  };
-
-  const handleGraphModalCancel = () => {
-    setIsGraphModalVisible(false);
-    graphForm.resetFields();
-  };
-
-  const getParentOptions = (tree: Category, currentId?: string): { label: string; value: string }[] => {
-    const options: { label: string; value: string }[] = [];
-    
-    const traverse = (node: Category, prefix: string = '') => {
-      if (node.id !== currentId) {
-        options.push({
-          label: `${prefix}${node.name}`,
-          value: node.id
-        });
-        
-        if (node.children) {
-          node.children.forEach(child => {
-            traverse(child, `${prefix}${node.name} / `);
-          });
-        }
-      }
-    };
-    
-    if (tree) {
-      traverse(tree);
-    }
-    
-    return options;
-  };
+  const columns = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 80,
+    },
+    {
+      title: '分类名称',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: '描述',
+      dataIndex: 'description',
+      key: 'description',
+      ellipsis: true,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 200,
+      render: (_: any, record: Category) => (
+         <Space size="middle">
+           <Button
+             type="link"
+             icon={<EyeOutlined />}
+             onClick={() => handleView(record)}
+           >
+             查看
+           </Button>
+           <Button
+             type="link"
+             icon={<EditOutlined />}
+             onClick={() => handleEdit(record)}
+           >
+             编辑
+           </Button>
+           <Popconfirm
+             title="确定要删除这个分类吗？"
+             onConfirm={() => handleDelete(record.id)}
+             okText="确定"
+             cancelText="取消"
+           >
+             <Button
+               type="link"
+               danger
+               icon={<DeleteOutlined />}
+             >
+               删除
+             </Button>
+           </Popconfirm>
+         </Space>
+       ),
+    },
+  ];
 
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2}>📁 分类管理</Title>
-        <Paragraph>
-          管理知识图谱的分类目录结构，支持多级分类，便于组织和查找图谱。
-        </Paragraph>
-      </div>
-
-      <Row gutter={24}>
-        <Col span={12}>
-          <Card 
-            title="分类树" 
+    <div style={{ padding: '24px' }}>
+      <Row gutter={[16, 16]}>
+        <Col span={24}>
+          <Card
+            title={<Title level={3}>📁 分类管理</Title>}
             extra={
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 icon={<PlusOutlined />}
-                onClick={handleAddGraph}
+                onClick={handleAdd}
               >
-                添加图谱
+                新建分类
               </Button>
             }
           >
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: '50px 0' }}>
-                加载中...
-              </div>
-            ) : (
-              <Tree
-                treeData={treeData}
-                onSelect={handleTreeSelect}
-                defaultExpandAll
-                showLine
-                showIcon={false}
-              />
-            )}
+            <Table
+              columns={columns}
+              dataSource={categories}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条记录`,
+              }}
+            />
           </Card>
         </Col>
         
-        <Col span={12}>
-          <Card title="分类详情">
-            {selectedCategory ? (
-              <div>
-                <div style={{ marginBottom: 16 }}>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Statistic 
-                        title="图谱数量" 
-                        value={selectedCategory.graph_ids?.length || 0} 
-                        prefix={<DatabaseOutlined />}
-                      />
-                    </Col>
-                    <Col span={12}>
-                      <Statistic 
-                        title="分类层级" 
-                        value={selectedCategory.level} 
-                        prefix={<FolderOutlined />}
-                      />
-                    </Col>
-                  </Row>
-                </div>
-                
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong>分类名称：</Text>
-                  <Text>{selectedCategory.name}</Text>
-                </div>
-                
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong>分类路径：</Text>
-                  <Text code>{selectedCategory.path}</Text>
-                </div>
-                
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong>描述：</Text>
-                  <Paragraph>{selectedCategory.description || '暂无描述'}</Paragraph>
-                </div>
-                
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong>创建时间：</Text>
-                  <Text>{new Date(selectedCategory.created_at).toLocaleString()}</Text>
-                </div>
-                
-                {categoryGraphs.length > 0 && (
-                  <div>
-                    <Text strong>包含的图谱：</Text>
-                    <div style={{ marginTop: 8 }}>
-                      {categoryGraphs.map(graph => (
-                        <Tag key={graph.id} color="blue" style={{ marginBottom: 4 }}>
-                          {graph.name}
-                        </Tag>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '50px 0', color: '#999' }}>
-                <InfoCircleOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-                <div>请选择一个分类查看详情</div>
-              </div>
-            )}
-          </Card>
-        </Col>
+        {selectedCategory && (
+          <Col span={24}>
+            <Card title={`📊 分类详情: ${selectedCategory.name}`}>
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Card size="small" title="基本信息">
+                    <p><strong>ID:</strong> {selectedCategory.id}</p>
+                    <p><strong>名称:</strong> {selectedCategory.name}</p>
+                    <p><strong>名称:</strong> {selectedCategory.name}</p>
+                  </Card>
+                </Col>
+                <Col span={12}>
+                  <Card size="small" title="子图谱信息">
+                    {subgraph ? (
+                      <>
+                        <p><strong>实体数量:</strong> {subgraph.entities.length}</p>
+                        <p><strong>关系数量:</strong> {subgraph.relationships.length}</p>
+                        <div>
+                          <strong>实体类型:</strong>
+                          <div style={{ marginTop: 8 }}>
+                            {Array.from(new Set(subgraph.entities.map(e => e.type))).map(type => (
+                              <Tag key={type} color="blue">{type}</Tag>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p>暂无子图谱数据</p>
+                    )}
+                  </Card>
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+        )}
       </Row>
 
       <Modal
-        title={editingCategory ? '编辑分类' : '创建分类'}
+        title={editingCategory ? '编辑分类' : '新建分类'}
         open={isModalVisible}
         onOk={handleModalOk}
-        onCancel={handleModalCancel}
+        onCancel={() => {
+          setIsModalVisible(false);
+          form.resetFields();
+        }}
         okText="确定"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical">
-          {!editingCategory && (
-            <Form.Item
-              name="parent_id"
-              label="父分类"
-              rules={[{ required: true, message: '请选择父分类' }]}
-            >
-              <Select 
-                placeholder="选择父分类"
-                onChange={(value) => {
-                  // 当选择父分类时，如果是root，显示图谱相关字段
-                  form.setFieldsValue({ parent_id: value });
-                }}
-              >
-                {categoryTree && getParentOptions(categoryTree).map(option => (
-                  <Option key={option.value} value={option.value}>
-                    {option.label}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          )}
-          
+        <Form
+          form={form}
+          layout="vertical"
+          name="categoryForm"
+        >
           <Form.Item
             name="name"
             label="分类名称"
-            rules={[{ required: true, message: '请输入分类名称' }]}
+            rules={[
+              { required: true, message: '请输入分类名称' },
+              { max: 100, message: '分类名称不能超过100个字符' }
+            ]}
           >
             <Input placeholder="请输入分类名称" />
-          </Form.Item>
-          
-          <Form.Item
-            name="description"
-            label="分类描述"
-          >
-            <TextArea 
-              rows={3} 
-              placeholder="请输入分类描述（可选）" 
-            />
-          </Form.Item>
-          
-          {/* 一级分类时显示图谱配置 */}
-          <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => 
-            prevValues.parent_id !== currentValues.parent_id
-          }>
-            {({ getFieldValue }) => {
-              const parentId = getFieldValue('parent_id');
-              return parentId === 'root' && !editingCategory ? (
-                <>
-                  <div style={{ 
-                    background: '#f6ffed', 
-                    border: '1px solid #b7eb8f', 
-                    borderRadius: '6px', 
-                    padding: '12px', 
-                    marginBottom: '16px' 
-                  }}>
-                    <Text strong style={{ color: '#52c41a' }}>🎯 一级分类将自动创建对应的知识图谱</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                      该分类下的所有文档都将归属到这个知识图谱中
-                    </Text>
-                  </div>
-                  
-                  <Form.Item
-                    name="graphName"
-                    label="知识图谱名称"
-                  >
-                    <Input placeholder="留空将自动生成（分类名+知识图谱）" />
-                  </Form.Item>
-                  
-                  <Form.Item
-                    name="graphDescription"
-                    label="知识图谱描述"
-                  >
-                    <TextArea 
-                      rows={2} 
-                      placeholder="留空将自动生成" 
-                    />
-                  </Form.Item>
-                  
-                  <Form.Item
-                    name="graphDomain"
-                    label="知识领域"
-                  >
-                    <Select placeholder="留空将自动判断">
-                      <Option value="general">通用领域</Option>
-                      <Option value="steel">钢铁冶金</Option>
-                      <Option value="medical">医疗健康</Option>
-                      <Option value="finance">金融财经</Option>
-                      <Option value="technology">科技互联网</Option>
-                      <Option value="education">教育培训</Option>
-                    </Select>
-                  </Form.Item>
-                </>
-              ) : null;
-            }}
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 创建图谱模态框 */}
-      <Modal
-        title="创建图谱"
-        open={isGraphModalVisible}
-        onOk={handleGraphModalOk}
-        onCancel={handleGraphModalCancel}
-        okText="确定"
-        cancelText="取消"
-      >
-        <Form form={graphForm} layout="vertical">
-          <Form.Item
-            name="name"
-            label="图谱名称"
-            rules={[{ required: true, message: '请输入图谱名称' }]}
-          >
-            <Input placeholder="请输入图谱名称" />
-          </Form.Item>
-          
-          <Form.Item
-            name="description"
-            label="图谱描述"
-          >
-            <TextArea 
-              rows={3} 
-              placeholder="请输入图谱描述（可选）" 
-            />
-          </Form.Item>
-          
-          <Form.Item
-            name="domain"
-            label="领域"
-          >
-            <Select placeholder="选择图谱领域">
-              <Option value="通用">通用</Option>
-              <Option value="钢铁">钢铁</Option>
-              <Option value="冶金">冶金</Option>
-              <Option value="教育">教育</Option>
-              <Option value="科技">科技</Option>
-            </Select>
           </Form.Item>
           
 

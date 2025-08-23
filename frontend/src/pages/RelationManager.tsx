@@ -5,61 +5,68 @@ import {
   Button,
   Space,
   Typography,
-  Tag,
-  Modal,
-  Form,
-  Input,
   Select,
   Statistic,
   Row,
   Col,
-  Tooltip,
-  Popconfirm,
   message,
-  Badge,
-  Descriptions,
-  Divider
+  Empty,
+  Modal,
+  Form,
+  Input,
+  Popconfirm
 } from 'antd';
 import {
-  EditOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  SearchOutlined,
   BranchesOutlined,
   EyeOutlined,
-  ArrowRightOutlined
+  DatabaseOutlined,
+  ArrowRightOutlined,
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { apiService, Relation, Graph } from '../services/api';
+import { apiService, Graph, SourceResource, Relationship, RelationCreateRequest, Entity } from '../services/api';
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 const { Option } = Select;
-const { TextArea } = Input;
 
 const RelationManager: React.FC = () => {
-  const [relations, setRelations] = useState<Relation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isDetailVisible, setIsDetailVisible] = useState(false);
-  const [editingRelation, setEditingRelation] = useState<Relation | null>(null);
-  const [viewingRelation, setViewingRelation] = useState<Relation | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string>('');
-  const [graphFilter, setGraphFilter] = useState<string>('');
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
+  const [loading, setLoading] = useState(false);
   const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [documents, setDocuments] = useState<SourceResource[]>([]);
+  const [selectedGraphId, setSelectedGraphId] = useState<string>('');
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [editingRelation, setEditingRelation] = useState<Relationship | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadGraphs();
   }, []);
 
-  // 当graphs数组更新时，重新加载关系
   useEffect(() => {
-    if (graphs.length > 0) {
+    if (selectedGraphId) {
+      loadDocuments();
       loadRelations();
+      loadEntities();
+    } else {
+      setDocuments([]);
+      setSelectedDocumentId('');
+      setRelationships([]);
+      setEntities([]);
     }
-  }, [graphs, graphFilter]);
+  }, [selectedGraphId]);
+
+  useEffect(() => {
+    if (selectedDocumentId) {
+      loadDocumentSubgraph();
+    } else {
+      setRelationships([]);
+    }
+  }, [selectedDocumentId]);
 
   const loadGraphs = async () => {
     try {
@@ -71,108 +78,121 @@ const RelationManager: React.FC = () => {
     }
   };
 
+  const loadDocuments = async () => {
+    if (!selectedGraphId) return;
+    
+    try {
+      const documentList = await apiService.getDocuments();
+      // 新API中文档没有graph_ids属性，显示所有文档
+      setDocuments(documentList);
+    } catch (error) {
+      console.error('加载文档列表失败:', error);
+      message.error('加载文档列表失败');
+    }
+  };
+
+  const loadEntities = async () => {
+    if (!selectedGraphId) return;
+    
+    try {
+      const entityList = await apiService.getEntities(selectedGraphId);
+      setEntities(entityList || []);
+    } catch (error) {
+      console.error('加载实体列表失败:', error);
+    }
+  };
+
   const loadRelations = async () => {
+    if (!selectedGraphId) return;
+    
     setLoading(true);
     try {
-      // 如果有选中的图谱，加载该图谱的关系
-      if (graphFilter) {
-        const relationList = await apiService.getRelations(graphFilter);
-        const selectedGraph = graphs.find(g => g.id === graphFilter);
-        const relationsWithGraphName = relationList.map(relation => ({
-          ...relation,
-          graphName: selectedGraph?.name || '未知图谱'
-        }));
-        setRelations(relationsWithGraphName);
-      } else {
-        // 否则加载所有图谱的关系
-        const allRelations: Relation[] = [];
-        for (const graph of graphs) {
-          try {
-            const relationList = await apiService.getRelations(graph.id);
-            const relationsWithGraphName = relationList.map(relation => ({
-              ...relation,
-              graphName: graph.name
-            }));
-            allRelations.push(...relationsWithGraphName);
-          } catch (error) {
-            console.error(`加载图谱 ${graph.name} 的关系失败:`, error);
-          }
-        }
-        setRelations(allRelations);
-      }
+      const relationList = await apiService.getRelations(selectedGraphId);
+      setRelationships(relationList || []);
     } catch (error) {
-      console.error('加载关系失败:', error);
-      message.error('加载关系失败');
+      console.error('加载关系列表失败:', error);
+      message.error('加载关系列表失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleView = (record: Relation) => {
-    setViewingRelation(record);
-    setIsDetailVisible(true);
-  };
-
-  const handleEdit = (record: Relation) => {
-    setEditingRelation(record);
-    form.setFieldsValue(record);
-    setIsModalVisible(true);
-  };
-
-  const handleDelete = async (id: string) => {
+  const loadDocumentSubgraph = async () => {
+    if (!selectedDocumentId) return;
+    
+    setLoading(true);
     try {
-      await apiService.deleteRelation(id);
-      message.success('删除成功');
-      loadRelations(); // 重新加载关系列表
+      const subgraph = await apiService.getDocumentSubgraph(parseInt(selectedDocumentId));
+      setRelationships(subgraph.relationships || []);
     } catch (error) {
-      console.error('删除失败:', error);
-      message.error('删除失败');
+      console.error('加载文档子图谱失败:', error);
+      message.error('加载文档子图谱失败');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleBatchDelete = async () => {
+  const handleView = (record: Relationship) => {
+    message.info(`查看关系: ${record.type}`);
+    // 这里可以实现关系详情查看功能
+  };
+
+  const handleCreate = () => {
+    if (!selectedGraphId) {
+      message.warning('请先选择图谱');
+      return;
+    }
+    if (entities.length < 2) {
+      message.warning('至少需要2个实体才能创建关系');
+      return;
+    }
+    setEditingRelation(null);
+    form.resetFields();
+    setIsModalVisible(true);
+  };
+
+  const handleEdit = (record: Relationship) => {
+    setEditingRelation(record);
+    form.setFieldsValue({
+      source_entity_id: record.start_node_id,
+      target_entity_id: record.end_node_id,
+      relation_type: record.type,
+      confidence: record.properties?.confidence || 1.0,
+      description: record.properties?.description || ''
+    });
+    setIsModalVisible(true);
+  };
+
+  const handleDelete = async (record: Relationship) => {
     try {
-      await Promise.all(selectedRowKeys.map(id => apiService.deleteRelation(id as string)));
-      setSelectedRowKeys([]);
-      message.success(`批量删除 ${selectedRowKeys.length} 个关系`);
-      loadRelations(); // 重新加载关系列表
+      await apiService.deleteRelation(record.id);
+      message.success('关系删除成功');
+      loadRelations();
     } catch (error) {
-      console.error('批量删除失败:', error);
-      message.error('批量删除失败');
+      console.error('删除关系失败:', error);
+      message.error('删除关系失败');
     }
   };
 
   const handleModalOk = async () => {
     try {
       const values = await form.validateFields();
-      
-      if (editingRelation) {
-        // 更新关系 - 暂时使用前端更新，等待后端API实现
-        setRelations(relations.map(r => 
-          r.id === editingRelation.id 
-            ? { ...r, ...values, updated_at: new Date().toISOString() }
-            : r
-        ));
-        message.success('更新成功');
-      } else {
-        // 创建新关系 - 暂时使用前端创建，等待后端API实现
-        const newRelation: Relation = {
-          id: Date.now().toString(),
-          source_entity_name: '',
-          target_entity_name: '',
-          ...values,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        setRelations([...relations, newRelation]);
-        message.success('创建成功');
-      }
+      const relationData: RelationCreateRequest = {
+        source_entity_id: values.source_entity_id,
+        target_entity_id: values.target_entity_id,
+        relation_type: values.relation_type,
+        confidence: values.confidence || 1.0,
+        description: values.description || '',
+        graph_id: selectedGraphId
+      };
+
+      await apiService.createRelation(relationData);
+      message.success('关系创建成功');
       setIsModalVisible(false);
-      setEditingRelation(null);
-      form.resetFields();
+      loadRelations();
     } catch (error) {
-      console.error('操作失败:', error);
-      message.error(editingRelation ? '更新失败' : '创建失败');
+      console.error('保存关系失败:', error);
+      message.error('保存关系失败');
     }
   };
 
@@ -182,255 +202,219 @@ const RelationManager: React.FC = () => {
     form.resetFields();
   };
 
-  const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      '具有性能': 'blue',
-      '生产出': 'green',
-      '应用于': 'orange',
-      '使用设备': 'purple',
-      '导致缺陷': 'red',
-      '包含成分': 'cyan',
-      '需要检测': 'magenta',
-      '改善性能': 'gold',
-      '防止缺陷': 'lime',
-      '互相影响': 'volcano'
-    };
-    return colors[type] || 'default';
-  };
-
-
-
-  const columns: ColumnsType<Relation> = [
+  const columns: ColumnsType<Relationship> = [
     {
-      title: '关系名称',
-      dataIndex: 'name',
-      key: 'name',
-      filteredValue: searchText ? [searchText] : null,
-      onFilter: (value, record) => {
-        const searchValue = value.toString().toLowerCase();
-        return (record.source_entity_name || record.source_entity_id || '').toLowerCase().includes(searchValue) ||
-          (record.description?.toLowerCase().includes(searchValue) || false) ||
-          (record.target_entity_name || record.target_entity_id || '').toLowerCase().includes(searchValue) ||
-          (record.relation_type || '').toLowerCase().includes(searchValue);
-      },
-      render: (text, record) => (
-        <div>
-          <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{text}</div>
-          <div style={{ fontSize: '12px', color: '#666' }}>
-            <Text>{record.source_entity_name || record.source_entity_id}</Text>
-            <ArrowRightOutlined style={{ margin: '0 8px', color: '#1890ff' }} />
-            <Text>{record.target_entity_name || record.target_entity_id}</Text>
-          </div>
-        </div>
-      )
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 200,
+      ellipsis: true
     },
     {
       title: '关系类型',
-      dataIndex: 'relation_type',
-      key: 'relation_type',
-      filters: [
-        { text: '具有性能', value: '具有性能' },
-        { text: '生产出', value: '生产出' },
-        { text: '应用于', value: '应用于' },
-        { text: '使用设备', value: '使用设备' },
-        { text: '导致缺陷', value: '导致缺陷' },
-        { text: '包含成分', value: '包含成分' },
-        { text: '需要检测', value: '需要检测' },
-        { text: '改善性能', value: '改善性能' },
-        { text: '防止缺陷', value: '防止缺陷' },
-        { text: '互相影响', value: '互相影响' }
-      ],
-      filteredValue: typeFilter ? [typeFilter] : null,
-      onFilter: (value, record) => record.relation_type === value,
-      render: (type) => (
-        <Tag color={getTypeColor(type)}>{type}</Tag>
-      )
-    },
-
-
-    {
-      title: '所属图谱',
-      dataIndex: 'graphName',
-      key: 'graphName',
-      filters: graphs.map(graph => ({
-        text: graph.name,
-        value: graph.id
-      })),
-      filteredValue: graphFilter ? [graphFilter] : null,
-      onFilter: (value, record) => record.graph_id === value
+      dataIndex: 'type',
+      key: 'type',
+      ellipsis: true
     },
     {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
+      title: '起始节点',
+      dataIndex: 'start_node_id',
+      key: 'start_node_id',
       ellipsis: true,
-      render: (text) => (
-        <Tooltip title={text}>
-          <Text ellipsis style={{ maxWidth: 200 }}>{text}</Text>
-        </Tooltip>
+      render: (nodeId: string) => (
+        <span style={{ color: '#1890ff' }}>{nodeId}</span>
       )
     },
-
+    {
+      title: '关系方向',
+      key: 'direction',
+      width: 80,
+      align: 'center',
+      render: () => (
+        <ArrowRightOutlined style={{ color: '#52c41a', fontSize: '16px' }} />
+      )
+    },
+    {
+      title: '结束节点',
+      dataIndex: 'end_node_id',
+      key: 'end_node_id',
+      ellipsis: true,
+      render: (nodeId: string) => (
+        <span style={{ color: '#fa8c16' }}>{nodeId}</span>
+      )
+    },
+    {
+      title: '属性',
+      dataIndex: 'properties',
+      key: 'properties',
+      ellipsis: true,
+      render: (properties: any) => {
+        if (!properties || Object.keys(properties).length === 0) {
+          return '无属性';
+        }
+        return JSON.stringify(properties);
+      }
+    },
     {
       title: '操作',
       key: 'action',
+      width: 200,
       render: (_, record) => (
-        <Space size="small">
-          <Tooltip title="查看详情">
-            <Button 
-              type="text" 
-              icon={<EyeOutlined />} 
-              onClick={() => handleView(record)}
-            />
-          </Tooltip>
-          <Tooltip title="编辑">
-            <Button 
-              type="text" 
-              icon={<EditOutlined />} 
-              onClick={() => handleEdit(record)}
-            />
-          </Tooltip>
-          <Tooltip title="删除">
-            <Popconfirm
-              title="确定要删除这个关系吗？"
-              onConfirm={() => handleDelete(record.id)}
-              okText="确定"
-              cancelText="取消"
+        <Space size="middle">
+          <Button
+            type="link"
+            icon={<EyeOutlined />}
+            onClick={() => handleView(record)}
+          >
+            查看
+          </Button>
+          <Button
+            type="link"
+            icon={<EditOutlined />}
+            onClick={() => handleEdit(record)}
+            disabled
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确定要删除这个关系吗？"
+            onConfirm={() => handleDelete(record)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button
+              type="link"
+              danger
+              icon={<DeleteOutlined />}
             >
-              <Button 
-                type="text" 
-                danger 
-                icon={<DeleteOutlined />}
-              />
-            </Popconfirm>
-          </Tooltip>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
-      )
-    }
+      ),
+    },
   ];
-
-  const rowSelection = {
-    selectedRowKeys,
-    onChange: (newSelectedRowKeys: React.Key[]) => {
-      setSelectedRowKeys(newSelectedRowKeys);
-    }
-  };
-
-  const relationTypes = Array.from(new Set(relations.map(r => r.relation_type)));
 
   return (
     <div>
-      <div className="page-header">
-        <Title level={2} className="page-title">🔗 关系管理</Title>
-        <Paragraph className="page-description">
-          管理知识图谱中的关系，包括查看、编辑、删除和创建新关系。
-        </Paragraph>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2}>🔗 关系管理</Title>
+        <Paragraph>通过选择图谱和文档来查看关系信息。新的API架构中，关系通过文档子图谱进行管理。</Paragraph>
       </div>
 
-      {/* 统计卡片 */}
-      <Row gutter={[24, 24]} style={{ marginBottom: 24 }} justify="center">
-        <Col xs={24} sm={12} lg={8}>
+      {/* 统计信息 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="关系总数"
-              value={relations.length}
-              prefix={<BranchesOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              title="当前关系数"
+              value={relationships.length}
+              prefix={<BranchesOutlined style={{ color: '#1890ff' }} />}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={8}>
+        <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="关系类型"
-              value={relationTypes.length}
-              valueStyle={{ color: '#52c41a' }}
+              title="可用图谱数"
+              value={graphs.length}
+              prefix={<DatabaseOutlined style={{ color: '#52c41a' }} />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="可用文档数"
+              value={documents.length}
+              prefix={<DatabaseOutlined style={{ color: '#fa8c16' }} />}
             />
           </Card>
         </Col>
       </Row>
 
-      <Card>
-        {/* 工具栏 */}
-        <div className="toolbar">
+      {/* 筛选器 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space wrap>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-            >
-              新建关系
-            </Button>
-            {selectedRowKeys.length > 0 && (
-              <Popconfirm
-                title={`确定要删除选中的 ${selectedRowKeys.length} 个关系吗？`}
-                onConfirm={handleBatchDelete}
-                okText="确定"
-                cancelText="取消"
+            <div>
+              <span style={{ marginRight: 8 }}>选择图谱:</span>
+              <Select
+                placeholder="请选择图谱"
+                style={{ width: 200 }}
+                value={selectedGraphId || undefined}
+                onChange={(value) => {
+                  setSelectedGraphId(value || '');
+                  setSelectedDocumentId('');
+                }}
+                allowClear
               >
-                <Button danger icon={<DeleteOutlined />}>
-                  批量删除 ({selectedRowKeys.length})
-                </Button>
-              </Popconfirm>
+                {graphs.map(graph => (
+                  <Option key={graph.id} value={graph.id}>
+                    {graph.name}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+            
+            {selectedGraphId && (
+              <div>
+                <span style={{ marginRight: 8 }}>选择文档:</span>
+                <Select
+                  placeholder="请选择文档"
+                  style={{ width: 200 }}
+                  value={selectedDocumentId || undefined}
+                  onChange={(value) => setSelectedDocumentId(value || '')}
+                  allowClear
+                >
+                  {documents.map(doc => (
+                    <Option key={doc.id} value={doc.id.toString()}>
+                      {doc.filename}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
             )}
           </Space>
           
-          <Space wrap>
-            <Input.Search
-              placeholder="搜索关系名称、实体或描述"
-              allowClear
-              style={{ width: 280 }}
-              onSearch={setSearchText}
-              onChange={(e) => !e.target.value && setSearchText('')}
-            />
-            <Select
-              placeholder="类型筛选"
-              allowClear
-              style={{ width: 120 }}
-              onChange={setTypeFilter}
-            >
-              {relationTypes.map(type => (
-                <Option key={type} value={type}>{type}</Option>
-              ))}
-            </Select>
-            <Select
-              placeholder="图谱筛选"
-              allowClear
-              style={{ width: 150 }}
-              onChange={(value) => {
-                setGraphFilter(value || '');
-                // 当图谱筛选改变时，重新加载关系
-                setTimeout(() => loadRelations(), 100);
-              }}
-            >
-              {graphs.map(graph => (
-                <Option key={graph.id} value={graph.id}>{graph.name}</Option>
-              ))}
-            </Select>
-          </Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleCreate}
+            disabled={!selectedGraphId}
+          >
+            创建关系
+          </Button>
         </div>
-
-        {/* 表格 */}
-        <Table
-          rowSelection={rowSelection}
-          columns={columns}
-          dataSource={relations}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            total: relations.length,
-            pageSize: 10,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
-          }}
-        />
       </Card>
 
-      {/* 编辑/新建模态框 */}
+      {/* 关系列表 */}
+      <Card>
+        {!selectedGraphId ? (
+          <Empty
+            description="请先选择一个图谱"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={relationships}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              total: relationships.length,
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
+            }}
+          />
+        )}
+      </Card>
+
+      {/* 创建/编辑关系模态框 */}
       <Modal
-        title={editingRelation ? '编辑关系' : '新建关系'}
+        title={editingRelation ? '编辑关系' : '创建关系'}
         open={isModalVisible}
         onOk={handleModalOk}
         onCancel={handleModalCancel}
@@ -439,152 +423,61 @@ const RelationManager: React.FC = () => {
         <Form
           form={form}
           layout="vertical"
+          initialValues={{
+            confidence: 1.0
+          }}
         >
           <Form.Item
-              name="relation_type"
-              label="关系类型"
-              rules={[{ required: true, message: '请选择关系类型' }]}
-            >
-              <Select placeholder="请选择关系类型">
-                <Option value="具有性能">具有性能</Option>
-                <Option value="生产出">生产出</Option>
-                <Option value="应用于">应用于</Option>
-                <Option value="使用设备">使用设备</Option>
-                <Option value="导致缺陷">导致缺陷</Option>
-                <Option value="包含成分">包含成分</Option>
-                <Option value="需要检测">需要检测</Option>
-                <Option value="改善性能">改善性能</Option>
-                <Option value="防止缺陷">防止缺陷</Option>
-                <Option value="互相影响">互相影响</Option>
-              </Select>
-            </Form.Item>
-          
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="source_entity_id"
-                label="源实体ID"
-                rules={[{ required: true, message: '请输入源实体ID' }]}
-              >
-                <Input placeholder="请输入源实体ID" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="target_entity_id"
-                label="目标实体ID"
-                rules={[{ required: true, message: '请输入目标实体ID' }]}
-              >
-                <Input placeholder="请输入目标实体ID" />
-              </Form.Item>
-            </Col>
-          </Row>
-          
+            name="source_entity_id"
+            label="源实体"
+            rules={[{ required: true, message: '请选择源实体' }]}
+          >
+            <Select placeholder="请选择源实体">
+              {entities.map(entity => (
+                <Option key={entity.id} value={entity.id}>
+                  {entity.name} ({entity.type})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="target_entity_id"
+            label="目标实体"
+            rules={[{ required: true, message: '请选择目标实体' }]}
+          >
+            <Select placeholder="请选择目标实体">
+              {entities.map(entity => (
+                <Option key={entity.id} value={entity.id}>
+                  {entity.name} ({entity.type})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="relation_type"
+            label="关系类型"
+            rules={[{ required: true, message: '请输入关系类型' }]}
+          >
+            <Input placeholder="例如：包含、属于、关联等" />
+          </Form.Item>
+
+          <Form.Item
+            name="confidence"
+            label="置信度"
+            rules={[{ required: true, message: '请输入置信度' }]}
+          >
+            <Input type="number" min={0} max={1} step={0.1} placeholder="0.0 - 1.0" />
+          </Form.Item>
+
           <Form.Item
             name="description"
             label="描述"
           >
-            <TextArea 
-              rows={3} 
-              placeholder="请输入关系描述" 
-            />
+            <Input.TextArea rows={3} placeholder="关系的详细描述（可选）" />
           </Form.Item>
-          
-          <Row gutter={16}>
-
-            <Col span={12}>
-              <Form.Item
-                name="graphId"
-                label="所属图谱"
-                rules={[{ required: true, message: '请选择所属图谱' }]}
-              >
-                <Select placeholder="请选择所属图谱">
-                  {graphs.map(graph => (
-                    <Option key={graph.id} value={graph.id}>{graph.name}</Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
         </Form>
-      </Modal>
-
-      {/* 详情模态框 */}
-      <Modal
-        title="关系详情"
-        open={isDetailVisible}
-        onCancel={() => setIsDetailVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setIsDetailVisible(false)}>
-            关闭
-          </Button>
-        ]}
-        width={700}
-      >
-        {viewingRelation && (
-          <div>
-            <Descriptions column={2} bordered>
-              <Descriptions.Item label="关系类型" span={2}>
-                <Tag color={getTypeColor(viewingRelation.relation_type)}>{viewingRelation.relation_type}</Tag>
-              </Descriptions.Item>
-
-              <Descriptions.Item label="源实体">
-                <Text strong>{viewingRelation.source_entity_name || viewingRelation.source_entity_id}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="目标实体">
-                <Text strong>{viewingRelation.target_entity_name || viewingRelation.target_entity_id}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="所属图谱">
-                {graphs.find(g => g.id === viewingRelation.graph_id)?.name || viewingRelation.graph_id}
-              </Descriptions.Item>
-              {viewingRelation.description && (
-                <Descriptions.Item label="描述" span={2}>
-                  {viewingRelation.description}
-                </Descriptions.Item>
-              )}
-              <Descriptions.Item label="创建时间">
-                {(() => {
-                  const date = new Date(viewingRelation.created_at);
-                  return date.toLocaleString('zh-CN', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
-                })()}
-              </Descriptions.Item>
-            </Descriptions>
-            
-
-            
-            <Divider />
-            <div style={{ textAlign: 'center', padding: '16px 0' }}>
-              <Space size="large" align="center">
-                <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
-                  {viewingRelation.source_entity_name || viewingRelation.source_entity_id}
-                </div>
-                <div style={{ fontSize: '12px', color: '#666' }}>源实体</div>
-              </div>
-              <ArrowRightOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#722ed1' }}>
-                  {viewingRelation.relation_type}
-                </div>
-                <div style={{ fontSize: '12px', color: '#666' }}>关系</div>
-              </div>
-              <ArrowRightOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
-                  {viewingRelation.target_entity_name || viewingRelation.target_entity_id}
-                </div>
-                <div style={{ fontSize: '12px', color: '#666' }}>目标实体</div>
-              </div>
-              </Space>
-            </div>
-          </div>
-        )}
       </Modal>
     </div>
   );

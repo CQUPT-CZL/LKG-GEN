@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import GraphBuilder from './pages/GraphBuilder';
 import TaskManager from './pages/TaskManager';
 import GraphManager from './pages/GraphManager';
+import DocumentManager from './pages/DocumentManager';
 import GraphVisualization from './pages/GraphVisualization';
 import EntityManager from './pages/EntityManager';
 import RelationManager from './pages/RelationManager';
@@ -28,6 +29,7 @@ function App() {
             <Route path="/builder" element={<GraphBuilder />} />
             <Route path="/tasks" element={<TaskManager />} />
             <Route path="/manager" element={<GraphManager />} />
+            <Route path="/documents" element={<DocumentManager />} />
             <Route path="/visualization" element={<GraphVisualization />} />
             <Route path="/entities" element={<EntityManager />} />
             <Route path="/relations" element={<RelationManager />} />

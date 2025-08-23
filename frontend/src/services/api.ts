@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:8000/api',
+  baseURL: '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -35,212 +35,190 @@ api.interceptors.response.use(
 export interface Graph {
   id: string;
   name: string;
-  description: string;
-  domain?: string;
-  category_id?: string;
-  category_path?: string;
-  category_name?: string;
-  created_at: string;
-  updated_at: string;
-  entity_count: number;
-  relation_count: number;
-  status: string;
+  description?: string;
+  entity_count?: number;
+  relation_count?: number;
 }
 
 export interface Category {
   id: string;
   name: string;
-  description: string;
   parent_id?: string;
-  level: number;
-  path: string;
-  children_ids: string[];
-  graph_ids: string[];
-  created_at: string;
-  updated_at: string;
-  children?: Category[];  // 用于树形结构
+  graph_id: string;
 }
 
 export interface Entity {
   id: string;
   name: string;
-  type: string;
-  description: string;
-  graph_id: string;
-  created_at: string;
-  updated_at: string;
-  frequency: number;
-  aliases: string[];
+  type?: string;
+  properties?: Record<string, any>;
 }
 
-export interface Relation {
+export interface Relationship {
   id: string;
-  source_entity_id: string;
-  target_entity_id: string;
-  source_entity_name: string;
-  target_entity_name: string;
-  relation_type: string;
-  description: string;
+  type: string;
+  start_node_id: string;
+  end_node_id: string;
+  properties?: Record<string, any>;
+}
+
+export interface SourceResource {
+  id: number;
+  filename: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  uploaded_at: string;
+  resource_type: string;
+  content?: string;
+}
+
+export interface Subgraph {
+  entities: Entity[];
+  relationships: Relationship[];
+}
+
+export interface BatchResourceRequest {
+  parent_id: string;
   graph_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface VisualizationData {
-  nodes: Array<{
-    id: string;
-    label: string;
-    title: string;
-    color: string;
-    size: number;
-    font: { size: number };
+  resources: {
+    filename: string;
+    content: string;
     type: string;
-  }>;
-  edges: Array<{
-    id: string;
-    from: string;
-    to: string;
-    label: string;
-    title: string;
-    width: number;
-    arrows: string;
-    color: { color: string; highlight: string };
-    font: { size: number };
-  }>;
-  graph_info: Graph;
+  }[];
 }
 
-export interface TaskStatus {
-  task_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  progress: number;
-  message: string;
-  result?: any;
+export interface BatchResourceResponse {
+  success_count: number;
+  failed_count: number;
+  total_count: number;
+  created_resources: SourceResource[];
+  failed_resources: any[];
+}
+
+// 任务相关类型定义
+export enum TaskType {
+  KNOWLEDGE_GRAPH_BUILD = 'knowledge_graph_build',
+  ENTITY_EXTRACTION = 'entity_extraction',
+  RELATION_EXTRACTION = 'relation_extraction'
+}
+
+export enum TaskStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  CANCELLED = 'cancelled'
 }
 
 export interface Task {
   id: string;
   name: string;
-  type: 'knowledge_graph_build' | 'entity_extraction' | 'relation_extraction';
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  type: TaskType;
+  status: TaskStatus;
   progress: number;
   message: string;
   created_at: string;
   updated_at: string;
   files: string[];
-  build_mode: 'standalone' | 'append';
   target_graph_id?: string;
-  result?: any;
   description?: string;
+  result?: any;
 }
 
 export interface CreateTaskRequest {
   name: string;
-  type: 'knowledge_graph_build';
-  build_mode: 'standalone' | 'append';
+  type?: TaskType;
   target_graph_id?: string;
   description?: string;
-  files: string[];
+  files?: string[];
 }
 
-export interface SystemStats {
-  total_graphs: number;
-  total_entities: number;
-  total_relations: number;
-  entity_type_distribution: Record<string, number>;
-  relation_type_distribution: Record<string, number>;
-  recent_graphs: Graph[];
-  system_health: string;
-  last_updated: string;
+export interface EntityCreateRequest {
+  name: string;
+  type: string;
+  description?: string;
+  graph_id: string;
 }
+
+export interface RelationCreateRequest {
+  source_entity_id: string;
+  target_entity_id: string;
+  relation_type: string;
+  confidence?: number;
+  description?: string;
+  graph_id: string;
+}
+
+
 
 // API方法
 export const apiService = {
-  // 健康检查
-  healthCheck: () => api.get('/health'),
+  // 文档管理
+  getDocuments: (skip = 0, limit = 100): Promise<SourceResource[]> => 
+    api.get(`/documents/?skip=${skip}&limit=${limit}`),
+  getDocument: (documentId: number): Promise<SourceResource> => 
+    api.get(`/documents/${documentId}`),
+  deleteDocument: (documentId: number): Promise<{ message: string; details: any }> => 
+    api.delete(`/documents/${documentId}`),
+  createResources: (data: BatchResourceRequest): Promise<BatchResourceResponse> => 
+    api.post('/documents/resources', data),
+  getDocumentSubgraph: (documentId: number): Promise<Subgraph> => 
+    api.get(`/documents/${documentId}/subgraph`),
 
-  // 统计信息
-  getStats: (): Promise<SystemStats> => api.get('/stats'),
-
-  // 图谱管理
-  getGraphs: (): Promise<Graph[]> => api.get('/graphs'),
-  getGraph: (id: string): Promise<Graph> => api.get(`/graphs/${id}`),
-  createGraph: (data: { name: string; description?: string; domain?: string; category_id?: string }): Promise<Graph> => 
-    api.post('/graphs', data),
-  updateGraph: (id: string, data: { name: string; description?: string }): Promise<Graph> => 
-    api.put(`/graphs/${id}`, data),
-  deleteGraph: (id: string): Promise<{ message: string }> => 
-    api.delete(`/graphs/${id}`),
+  // 知识图谱管理
+  getGraphs: (skip = 0, limit = 100): Promise<Graph[]> => 
+    api.get(`/graphs/?skip=${skip}&limit=${limit}`),
+  getGraph: (graphId: string): Promise<Graph> => 
+    api.get(`/graphs/${graphId}`),
+  createGraph: (data: { name: string; description?: string }): Promise<Graph> => 
+    api.post('/graphs/', data),
+  deleteGraph: (graphId: string): Promise<{ message: string }> => 
+    api.delete(`/graphs/${graphId}`),
 
   // 分类管理
-  getCategories: (): Promise<Category[]> => api.get('/categories'),
-  getCategoryTree: (): Promise<Category> => api.get('/categories/tree'),
-  getCategory: (id: string): Promise<Category> => api.get(`/categories/${id}`),
-  createCategory: (data: { name: string; description?: string; parent_id?: string }): Promise<Category> => 
-    api.post('/categories', data),
-  updateCategory: (id: string, data: { name: string; description?: string }): Promise<Category> => 
-    api.put(`/categories/${id}`, data),
-  deleteCategory: (id: string): Promise<{ message: string }> => 
-    api.delete(`/categories/${id}`),
-  getCategoryGraphs: (categoryId: string): Promise<Graph[]> => 
-    api.get(`/categories/${categoryId}/graphs`),
+  getCategory: (categoryId: string): Promise<Category> => 
+    api.get(`/categories/${categoryId}`),
+  createCategory: (data: { name: string; parent_id: string }): Promise<Category> => 
+    api.post('/categories/', data),
+  deleteCategory: (categoryId: string): Promise<{ message: string }> => 
+    api.delete(`/categories/${categoryId}`),
+  getCategorySubgraph: (categoryId: string): Promise<Subgraph> => 
+    api.get(`/categories/${categoryId}/subgraph`),
 
-  // 任务相关
-  uploadDocument: (file: File): Promise<{ task_id: string; message: string; filename: string }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post('/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
-  getTaskStatus: (taskId: string): Promise<TaskStatus> => 
+  // 任务管理API
+  getTasks: (): Promise<Task[]> => 
+    api.get('/tasks'),
+  getTask: (taskId: string): Promise<Task> => 
+    api.get(`/tasks/${taskId}`),
+  createTask: (data: CreateTaskRequest): Promise<Task> => 
+    api.post('/tasks', data),
+  deleteTask: (taskId: string): Promise<{ message: string }> => 
+    api.delete(`/tasks/${taskId}`),
+  cancelTask: (taskId: string): Promise<Task> => 
+    api.post(`/tasks/${taskId}/cancel`),
+  getTaskStatus: (taskId: string): Promise<{ task_id: string; status: string; progress: number; message: string; result?: any }> => 
     api.get(`/tasks/${taskId}/status`),
-  
-  // 任务管理
-  getTasks: (): Promise<Task[]> => api.get('/tasks'),
-  getTask: (taskId: string): Promise<Task> => api.get(`/tasks/${taskId}`),
-  createTask: (data: CreateTaskRequest): Promise<Task> => api.post('/tasks', data),
-  deleteTask: (taskId: string): Promise<{ message: string }> => api.delete(`/tasks/${taskId}`),
-  cancelTask: (taskId: string): Promise<{ message: string }> => api.post(`/tasks/${taskId}/cancel`),
 
-  // 实体管理
+  // 实体管理接口
   getEntities: (graphId: string): Promise<Entity[]> => 
     api.get(`/graphs/${graphId}/entities`),
-  createEntity: (data: {
-    name: string;
-    type: string;
-    description?: string;
-    graph_id: string;
-  }): Promise<Entity> => api.post('/entities', data),
-  updateEntity: (id: string, data: {
-    name: string;
-    type: string;
-    description?: string;
-    graph_id: string;
-  }): Promise<Entity> => api.put(`/entities/${id}`, data),
-  deleteEntity: (id: string): Promise<{ message: string }> => 
-    api.delete(`/entities/${id}`),
+  createEntity: (data: EntityCreateRequest): Promise<Entity> => 
+    api.post('/entities', data),
+  updateEntity: (entityId: string, data: EntityCreateRequest): Promise<Entity> => 
+    api.put(`/entities/${entityId}`, data),
+  deleteEntity: (entityId: string): Promise<{ message: string }> => 
+    api.delete(`/entities/${entityId}`),
 
-  // 关系管理
-  getRelations: (graphId: string): Promise<Relation[]> => 
+  // 关系管理接口
+  getRelations: (graphId: string): Promise<Relationship[]> => 
     api.get(`/graphs/${graphId}/relations`),
-  createRelation: (data: {
-    source_entity_id: string;
-    target_entity_id: string;
-    relation_type: string;
-    description?: string;
-    graph_id: string;
-  }): Promise<Relation> => api.post('/relations', data),
-  deleteRelation: (id: string): Promise<{ message: string }> => 
-    api.delete(`/relations/${id}`),
+  createRelation: (data: RelationCreateRequest): Promise<Relationship> => 
+    api.post('/relations', data),
+  deleteRelation: (relationId: string): Promise<{ message: string }> => 
+    api.delete(`/relations/${relationId}`),
 
-  // 可视化数据
-  getGraphVisualization: (graphId: string): Promise<VisualizationData> => 
-    api.get(`/graphs/${graphId}/visualization`),
-  getCategoryVisualization: (categoryId: string): Promise<VisualizationData> => 
-    api.get(`/categories/${categoryId}/visualization`),
+  // 图谱数据导入接口
+  importGraphData: (graphId: string): Promise<{ success: boolean; message: string }> => 
+    api.post(`/graphs/${graphId}/import-data`),
 };
 
 export default api;

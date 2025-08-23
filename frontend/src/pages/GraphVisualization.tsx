@@ -16,8 +16,7 @@ import {
   Col,
   Divider,
   message,
-  Spin,
-  TreeSelect
+  Spin
 } from 'antd';
 import {
   FullscreenOutlined,
@@ -31,7 +30,7 @@ import {
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
-import { apiService, Graph, VisualizationData, Category } from '../services/api';
+import { apiService, Graph, Subgraph, Entity, Relationship, SourceResource } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -60,128 +59,176 @@ interface GraphStats {
 }
 
 const GraphVisualization: React.FC = () => {
-  const networkRef = useRef<HTMLDivElement>(null);
-  const networkInstance = useRef<Network | null>(null);
-  const [selectedGraph, setSelectedGraph] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('root');
+  const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [documents, setDocuments] = useState<SourceResource[]>([]);
+  const [selectedGraph, setSelectedGraph] = useState<Graph | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<SourceResource | null>(null);
+  const [subgraph, setSubgraph] = useState<Subgraph | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [networkData, setNetworkData] = useState<Data>({ nodes: [], edges: [] });
+  const [stats, setStats] = useState<GraphStats>({ nodes: 0, edges: 0, nodeTypes: {}, edgeTypes: {} });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const [physics, setPhysics] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [nodeSize, setNodeSize] = useState(25);
   const [edgeWidth, setEdgeWidth] = useState(2);
   const [showLabels, setShowLabels] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [graphs, setGraphs] = useState<Graph[]>([]);
-  const [categoryTree, setCategoryTree] = useState<Category | null>(null);
-  const [visualizationData, setVisualizationData] = useState<VisualizationData | null>(null);
-  const [graphStats, setGraphStats] = useState<GraphStats>({
-    nodes: 0,
-    edges: 0,
-    nodeTypes: {},
-    edgeTypes: {}
-  });
+  const [physics, setPhysics] = useState(true);
+  const networkRef = useRef<HTMLDivElement>(null);
+  const networkInstance = useRef<Network | null>(null);
 
-  // 加载分类树
-  const loadCategoryTree = async () => {
+  useEffect(() => {
+    loadGraphs();
+  }, []);
+
+  useEffect(() => {
+    if (selectedGraph) {
+      loadDocuments();
+    }
+  }, [selectedGraph]);
+
+  useEffect(() => {
+    if (selectedDocument) {
+      loadDocumentSubgraph();
+    }
+  }, [selectedDocument]);
+
+  useEffect(() => {
+    if (subgraph) {
+      buildNetworkData();
+    }
+  }, [subgraph]);
+
+  useEffect(() => {
+    if (networkData.nodes && networkData.nodes.length > 0 && networkRef.current) {
+      initializeNetwork();
+    }
+  }, [networkData, nodeSize, edgeWidth, showLabels, physics]);
+
+  const loadGraphs = async () => {
     try {
-      const tree = await apiService.getCategoryTree();
-      setCategoryTree(tree);
+      const graphsData = await apiService.getGraphs();
+      setGraphs(graphsData);
     } catch (error) {
-      console.error('加载分类树失败:', error);
-      message.error('加载分类树失败');
+      console.error('加载图谱失败:', error);
+      message.error('加载图谱失败');
     }
   };
 
-  // 加载图谱列表（根据分类）
-  const loadGraphs = async (categoryId: string = 'root') => {
+  const loadDocuments = async () => {
     try {
-      const graphList = await apiService.getCategoryGraphs(categoryId);
-      setGraphs(graphList);
-      // 如果当前选择的图谱不在新的列表中，清空选择
-      if (selectedGraph && !graphList.find(g => g.id === selectedGraph)) {
-        setSelectedGraph('');
-        setVisualizationData(null);
-      }
-      // 如果没有选择图谱且有可用图谱，选择第一个
-      if (!selectedGraph && graphList.length > 0) {
-        setSelectedGraph(graphList[0].id);
-      }
+      const documentsData = await apiService.getDocuments();
+      setDocuments(documentsData);
     } catch (error) {
-      console.error('加载图谱列表失败:', error);
-      message.error('加载图谱列表失败');
+      console.error('加载文档失败:', error);
+      message.error('加载文档失败');
     }
   };
 
-  // 加载可视化数据（根据分类）
-  const loadVisualizationData = async (categoryId: string) => {
-    if (!categoryId) return;
+  const loadDocumentSubgraph = async () => {
+    if (!selectedDocument) return;
     
     setLoading(true);
     try {
-      const data = await apiService.getCategoryVisualization(categoryId);
-      setVisualizationData(data);
-      
-      // 计算统计信息
-      const nodeTypes: Record<string, number> = {};
-      const edgeTypes: Record<string, number> = {};
-      
-      data.nodes.forEach((node) => {
-        nodeTypes[node.type] = (nodeTypes[node.type] || 0) + 1;
-      });
-      
-      data.edges.forEach((edge) => {
-        const edgeType = edge.label || 'unknown';
-        edgeTypes[edgeType] = (edgeTypes[edgeType] || 0) + 1;
-      });
-      
-      setGraphStats({
-        nodes: data.nodes.length,
-        edges: data.edges.length,
-        nodeTypes,
-        edgeTypes
-      });
-      
+      const subgraphData = await apiService.getDocumentSubgraph(selectedDocument.id);
+      setSubgraph(subgraphData);
     } catch (error) {
-      console.error('加载可视化数据失败:', error);
-      message.error('加载可视化数据失败');
+      console.error('加载文档子图谱失败:', error);
+      message.error('加载文档子图谱失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const initializeNetwork = () => {
-    if (!networkRef.current || !visualizationData) return;
+  const buildNetworkData = () => {
+    if (!subgraph) return;
 
-    const data = {
-      nodes: visualizationData.nodes,
-      edges: visualizationData.edges
+    const nodes: GraphNode[] = subgraph.entities.map(entity => ({
+      id: entity.id.toString(),
+      label: entity.name,
+      type: entity.type || 'Unknown',
+      properties: entity.properties,
+      color: getNodeColor(entity.type || 'Unknown'),
+      size: nodeSize,
+      font: { size: showLabels ? 14 : 0 }
+    }));
+
+    const edges: GraphEdge[] = subgraph.relationships.map(rel => ({
+      id: rel.id.toString(),
+      from: rel.start_node_id.toString(),
+      to: rel.end_node_id.toString(),
+      label: showLabels ? rel.type : '',
+      type: rel.type,
+      width: edgeWidth,
+      arrows: { to: { enabled: true } }
+    }));
+
+    setNetworkData({ nodes, edges });
+    calculateStats(nodes, edges);
+  };
+
+  const getNodeColor = (type: string): string => {
+    const colors: Record<string, string> = {
+      'Person': '#ff7875',
+      'Organization': '#40a9ff',
+      'Location': '#73d13d',
+      'Event': '#ffb347',
+      'Concept': '#b37feb',
+      'Product': '#ffc069',
+      'Technology': '#36cfc9'
     };
+    return colors[type] || '#d9d9d9';
+  };
+
+  const calculateStats = (nodes: GraphNode[], edges: GraphEdge[]) => {
+    const nodeTypes: Record<string, number> = {};
+    const edgeTypes: Record<string, number> = {};
+
+    nodes.forEach(node => {
+      nodeTypes[node.type] = (nodeTypes[node.type] || 0) + 1;
+    });
+
+    edges.forEach(edge => {
+      edgeTypes[edge.type] = (edgeTypes[edge.type] || 0) + 1;
+    });
+
+    setStats({
+      nodes: nodes.length,
+      edges: edges.length,
+      nodeTypes,
+      edgeTypes
+    });
+  };
+
+  const initializeNetwork = () => {
+    if (!networkRef.current) return;
 
     const options: Options = {
       nodes: {
+        shape: 'dot',
         size: nodeSize,
         font: {
           size: showLabels ? 14 : 0,
-          color: '#333'
+          color: '#343434'
         },
         borderWidth: 2,
         shadow: true
       },
       edges: {
         width: edgeWidth,
-        font: {
-          size: showLabels ? 12 : 0,
-          align: 'middle'
-        },
-        arrows: {
-          to: { enabled: true, scaleFactor: 1 }
-        },
+        color: { inherit: 'from' },
         smooth: {
           enabled: true,
           type: 'continuous',
           roundness: 0.5
+        },
+        arrows: {
+          to: { enabled: true, scaleFactor: 1 }
+        },
+        font: {
+          size: showLabels ? 12 : 0,
+          align: 'middle'
         }
       },
       physics: {
@@ -201,25 +248,23 @@ const GraphVisualization: React.FC = () => {
       networkInstance.current.destroy();
     }
 
-    networkInstance.current = new Network(networkRef.current, data, options);
+    networkInstance.current = new Network(networkRef.current, networkData, options);
 
-    // 事件监听
-    networkInstance.current.on('selectNode', (params) => {
+    // 添加事件监听器
+    networkInstance.current.on('click', (params) => {
       if (params.nodes.length > 0) {
         const nodeId = params.nodes[0];
-        const node = visualizationData.nodes.find((n) => n.id === nodeId) as GraphNode;
+        const nodes = networkData.nodes as GraphNode[];
+        const node = nodes.find(n => n.id === nodeId);
         if (node) {
           setSelectedNode(node);
           setSelectedEdge(null);
           setDrawerVisible(true);
         }
-      }
-    });
-
-    networkInstance.current.on('selectEdge', (params) => {
-      if (params.edges.length > 0) {
+      } else if (params.edges.length > 0) {
         const edgeId = params.edges[0];
-        const edge = visualizationData.edges.find((e) => e.id === edgeId) as GraphEdge;
+        const edges = networkData.edges as GraphEdge[];
+        const edge = edges.find(e => e.id === edgeId);
         if (edge) {
           setSelectedEdge(edge);
           setSelectedNode(null);
@@ -227,87 +272,24 @@ const GraphVisualization: React.FC = () => {
         }
       }
     });
-
-    networkInstance.current.on('deselectNode', () => {
-      setSelectedNode(null);
-    });
-
-    networkInstance.current.on('deselectEdge', () => {
-      setSelectedEdge(null);
-    });
   };
 
-  // 将分类树转换为TreeSelect数据格式
-  const convertCategoryToTreeData = (category: Category): any => {
-    return {
-      title: category.name,
-      value: category.id,
-      key: category.id,
-      children: category.children?.map(child => convertCategoryToTreeData(child)) || []
-    };
-  };
-
-  // 处理分类选择变化
-  const handleCategoryChange = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    loadGraphs(categoryId);
-    loadVisualizationData(categoryId);
-  };
-
-  useEffect(() => {
-    loadCategoryTree();
-    loadGraphs('root');
-    loadVisualizationData('root');
-    return () => {
-      if (networkInstance.current) {
-        networkInstance.current.destroy();
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    if (networkInstance.current && value && networkData.nodes) {
+      const nodes = networkData.nodes as GraphNode[];
+      const matchingNodes = nodes.filter((node: GraphNode) => 
+        node.label?.toLowerCase().includes(value.toLowerCase())
+      );
+      
+      if (matchingNodes.length > 0) {
+        const nodeIds = matchingNodes.map((node: GraphNode) => node.id);
+        networkInstance.current.selectNodes(nodeIds);
+        networkInstance.current.focus(nodeIds[0], {
+          scale: 1.5,
+          animation: true
+        });
       }
-    };
-  }, []);
-
-  // 移除这个useEffect，因为分类变化已经在handleCategoryChange中处理
-
-  // 移除基于selectedGraph的useEffect，现在直接基于分类加载数据
-
-  useEffect(() => {
-    if (visualizationData) {
-      initializeNetwork();
-    }
-  }, [visualizationData]);
-
-  useEffect(() => {
-    if (networkInstance.current) {
-      networkInstance.current.setOptions({
-        nodes: {
-          size: nodeSize,
-          font: { size: showLabels ? 14 : 0 }
-        },
-        edges: {
-          width: edgeWidth,
-          font: { size: showLabels ? 12 : 0 }
-        },
-        physics: { enabled: physics }
-      });
-    }
-  }, [nodeSize, edgeWidth, showLabels, physics]);
-
-  const handleSearch = () => {
-    if (!networkInstance.current || !searchText || !visualizationData) return;
-    
-    const matchedNodes = visualizationData.nodes.filter((node) => 
-      node.label.toLowerCase().includes(searchText.toLowerCase())
-    );
-    
-    if (matchedNodes.length > 0) {
-      const nodeIds = matchedNodes.map((node) => node.id);
-      networkInstance.current.selectNodes(nodeIds);
-      networkInstance.current.focus(nodeIds[0], {
-        scale: 1.5,
-        animation: true
-      });
-      message.success(`找到 ${matchedNodes.length} 个匹配的节点`);
-    } else {
-      message.warning('未找到匹配的节点');
     }
   };
 
@@ -331,213 +313,190 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
-  const handleRefresh = () => {
-    if (selectedGraph) {
-      loadVisualizationData(selectedGraph);
-    }
-  };
-
-  const handleExport = () => {
-    if (networkInstance.current) {
-      try {
-        // 使用vis-network的导出功能
-        const canvas = document.querySelector('#network-container canvas') as HTMLCanvasElement;
-        if (canvas) {
-          const dataURL = canvas.toDataURL('image/png');
-          const link = document.createElement('a');
-          link.download = `knowledge-graph-${selectedGraph}.png`;
-          link.href = dataURL;
-          link.click();
-          message.success('图片导出成功！');
-        }
-      } catch (error) {
-        console.error('导出失败:', error);
-        message.error('导出失败，请重试');
+  const handleDownload = () => {
+    if (networkInstance.current && networkRef.current) {
+      const canvas = networkRef.current.querySelector('canvas');
+      if (canvas) {
+        const link = document.createElement('a');
+        link.download = `graph-${selectedGraph?.name || 'visualization'}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
       }
     }
-  };
-
-  const handleFullscreen = () => {
-    const container = document.getElementById('network-container');
-    if (!container) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        // 进入全屏
-        if (container.requestFullscreen) {
-          container.requestFullscreen();
-        } else if ((container as any).webkitRequestFullscreen) {
-          (container as any).webkitRequestFullscreen();
-        } else if ((container as any).mozRequestFullScreen) {
-          (container as any).mozRequestFullScreen();
-        } else if ((container as any).msRequestFullscreen) {
-          (container as any).msRequestFullscreen();
-        }
-        message.success('已进入全屏模式，按ESC键退出');
-      } else {
-        // 退出全屏
-        if (document.exitFullscreen) {
-          document.exitFullscreen();
-        } else if ((document as any).webkitExitFullscreen) {
-          (document as any).webkitExitFullscreen();
-        } else if ((document as any).mozCancelFullScreen) {
-          (document as any).mozCancelFullScreen();
-        } else if ((document as any).msExitFullscreen) {
-          (document as any).msExitFullscreen();
-        }
-      }
-    } catch (error) {
-      console.error('全屏操作失败:', error);
-      message.error('全屏功能不支持或操作失败');
-    }
-  };
-
-  const getNodeTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      concept: '#1890ff',
-      algorithm: '#52c41a',
-      model: '#fa8c16',
-      field: '#722ed1'
-    };
-    return colors[type] || '#666';
-  };
-
-  const getNodeTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      concept: '概念',
-      algorithm: '算法',
-      model: '模型',
-      field: '领域'
-    };
-    return labels[type] || type;
-  };
-
-  const getEdgeTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      contains: '包含',
-      based_on: '基于',
-      implements: '实现',
-      applied_to: '应用于',
-      used_for: '用于'
-    };
-    return labels[type] || type;
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <Title level={2} className="page-title">🎨 图谱可视化</Title>
-        <Paragraph className="page-description">
-          交互式知识图谱可视化，支持节点搜索、缩放、导出等功能。
-        </Paragraph>
-      </div>
-
-      {/* 控制面板 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={12} md={6}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <TreeSelect
-                style={{ width: '100%' }}
-                placeholder="请选择分类"
-                value={selectedCategory}
-                onChange={handleCategoryChange}
-                treeData={categoryTree ? [convertCategoryToTreeData(categoryTree)] : []}
-                showSearch
-                treeDefaultExpandAll
-                allowClear={false}
-              />
-
-            </Space>
-          </Col>
-          
-          <Col xs={24} sm={12} md={8}>
-            <Input.Search
-              placeholder="搜索节点"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onSearch={handleSearch}
-              style={{ width: '100%' }}
-            />
-          </Col>
-          
-          <Col xs={24} md={10}>
-            <Space wrap>
-              <Tooltip title="放大">
-                <Button icon={<ZoomInOutlined />} onClick={handleZoomIn} />
-              </Tooltip>
-              <Tooltip title="缩小">
-                <Button icon={<ZoomOutOutlined />} onClick={handleZoomOut} />
-              </Tooltip>
-              <Tooltip title="重置视图">
-                <Button icon={<ReloadOutlined />} onClick={handleReset} />
-              </Tooltip>
-              <Tooltip title="刷新数据">
-                <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} />
-              </Tooltip>
-              <Tooltip title="全屏">
-                <Button icon={<FullscreenOutlined />} onClick={handleFullscreen} />
-              </Tooltip>
-              <Tooltip title="导出图片">
-                <Button icon={<DownloadOutlined />} onClick={handleExport} />
-              </Tooltip>
-              <Tooltip title="显示信息">
-                <Button 
-                  icon={<InfoCircleOutlined />} 
-                  onClick={() => setDrawerVisible(true)}
-                />
-              </Tooltip>
-            </Space>
-          </Col>
-        </Row>
-       </Card>
-
-      {/* 可视化区域 */}
-      <Card>
-        <Spin spinning={loading} tip="加载图谱数据中...">
-          <Row gutter={16}>
-            <Col xs={24} lg={18}>
-              <div 
-                ref={networkRef} 
-                id="network-container"
-                className="graph-container"
-                style={{ height: '600px', border: '1px solid #d9d9d9', borderRadius: '8px' }}
-              />
-            </Col>
-          
-          <Col xs={24} lg={6}>
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              {/* 统计信息 */}
-              <Card size="small" title="📊 图谱统计">
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label="节点数">{graphStats.nodes}</Descriptions.Item>
-                  <Descriptions.Item label="边数">{graphStats.edges}</Descriptions.Item>
-                </Descriptions>
+    <div style={{ padding: '24px' }}>
+      <Row gutter={[16, 16]}>
+        <Col span={24}>
+          <Card
+            title={<Title level={3}>🔍 图谱可视化</Title>}
+            extra={
+              <Space>
+                <Select
+                  placeholder="选择图谱"
+                  style={{ width: 200 }}
+                  value={selectedGraph?.id}
+                  onChange={(value) => {
+                    const graph = graphs.find(g => g.id === value);
+                    setSelectedGraph(graph || null);
+                    setSelectedDocument(null);
+                    setSubgraph(null);
+                  }}
+                >
+                  {graphs.map(graph => (
+                    <Option key={graph.id} value={graph.id}>
+                      {graph.name}
+                    </Option>
+                  ))}
+                </Select>
                 
-                <Divider style={{ margin: '12px 0' }} />
-                
-                <div style={{ marginBottom: 8 }}>
-                  <Text strong>节点类型:</Text>
-                </div>
-                {Object.entries(graphStats.nodeTypes).map(([type, count]) => (
-                  <div key={type} style={{ marginBottom: 4 }}>
-                    <Tag color={getNodeTypeColor(type)}>
-                      {getNodeTypeLabel(type)}: {count}
-                    </Tag>
-                  </div>
-                ))}
-              </Card>
+                {selectedGraph && (
+                  <Select
+                    placeholder="选择文档"
+                    style={{ width: 200 }}
+                    value={selectedDocument?.id}
+                    onChange={(value) => {
+                      const doc = documents.find(d => d.id === value);
+                      setSelectedDocument(doc || null);
+                    }}
+                  >
+                    {documents.map(doc => (
+                      <Option key={doc.id} value={doc.id}>
+                        {doc.filename}
+                      </Option>
+                    ))}
+                  </Select>
+                )}
+              </Space>
+            }
+          >
+            <Row gutter={[16, 16]}>
+              <Col span={18}>
+                <Card
+                  size="small"
+                  title="图谱视图"
+                  extra={
+                    <Space>
+                      <Input.Search
+                        placeholder="搜索节点"
+                        style={{ width: 200 }}
+                        onSearch={handleSearch}
+                        prefix={<SearchOutlined />}
+                      />
+                      <Tooltip title="放大">
+                        <Button icon={<ZoomInOutlined />} onClick={handleZoomIn} />
+                      </Tooltip>
+                      <Tooltip title="缩小">
+                        <Button icon={<ZoomOutOutlined />} onClick={handleZoomOut} />
+                      </Tooltip>
+                      <Tooltip title="重置视图">
+                        <Button icon={<ReloadOutlined />} onClick={handleReset} />
+                      </Tooltip>
+                      <Tooltip title="下载图片">
+                        <Button icon={<DownloadOutlined />} onClick={handleDownload} />
+                      </Tooltip>
+                      <Tooltip title="设置">
+                        <Button icon={<SettingOutlined />} onClick={() => setDrawerVisible(true)} />
+                      </Tooltip>
+                    </Space>
+                  }
+                >
+                  <Spin spinning={loading}>
+                    <div
+                      ref={networkRef}
+                      style={{
+                        width: '100%',
+                        height: '600px',
+                        border: '1px solid #d9d9d9',
+                        borderRadius: '6px'
+                      }}
+                    />
+                  </Spin>
+                </Card>
+              </Col>
               
+              <Col span={6}>
+                <Card size="small" title="图谱统计">
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="节点数量">
+                      <Text strong>{stats.nodes}</Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="边数量">
+                      <Text strong>{stats.edges}</Text>
+                    </Descriptions.Item>
+                  </Descriptions>
+                  
+                  <Divider style={{ margin: '12px 0' }} />
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <Text strong>节点类型分布</Text>
+                    <div style={{ marginTop: 8 }}>
+                      {Object.entries(stats.nodeTypes).map(([type, count]) => (
+                        <Tag key={type} color={getNodeColor(type)} style={{ marginBottom: 4 }}>
+                          {type}: {count}
+                        </Tag>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Text strong>关系类型分布</Text>
+                    <div style={{ marginTop: 8 }}>
+                      {Object.entries(stats.edgeTypes).map(([type, count]) => (
+                        <Tag key={type} style={{ marginBottom: 4 }}>
+                          {type}: {count}
+                        </Tag>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+                
+                <Card size="small" title="视图控制" style={{ marginTop: 16 }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <Text>节点大小</Text>
+                    <Slider
+                      min={10}
+                      max={50}
+                      value={nodeSize}
+                      onChange={setNodeSize}
+                      style={{ marginTop: 8 }}
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <Text>边宽度</Text>
+                    <Slider
+                      min={1}
+                      max={5}
+                      value={edgeWidth}
+                      onChange={setEdgeWidth}
+                      style={{ marginTop: 8 }}
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <Space>
+                      <Text>显示标签</Text>
+                      <Switch checked={showLabels} onChange={setShowLabels} />
+                    </Space>
+                  </div>
+                  
+                  <div>
+                    <Space>
+                      <Text>物理引擎</Text>
+                      <Switch checked={physics} onChange={setPhysics} />
+                    </Space>
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+          </Card>
+        </Col>
+      </Row>
 
-            </Space>
-          </Col>
-        </Row>
-        </Spin>
-      </Card>
-
-      {/* 详情抽屉 */}
       <Drawer
-        title={selectedNode ? '节点详情' : selectedEdge ? '关系详情' : '图谱信息'}
+        title={selectedNode ? '节点详情' : '关系详情'}
         placement="right"
         onClose={() => setDrawerVisible(false)}
         open={drawerVisible}
@@ -545,26 +504,24 @@ const GraphVisualization: React.FC = () => {
       >
         {selectedNode && (
           <div>
-            <Descriptions column={1}>
-              <Descriptions.Item label="名称">{selectedNode?.label}</Descriptions.Item>
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label="ID">{selectedNode.id}</Descriptions.Item>
+              <Descriptions.Item label="名称">{selectedNode.label}</Descriptions.Item>
               <Descriptions.Item label="类型">
-                <Tag color={getNodeTypeColor(selectedNode?.type || '')}>
-                  {getNodeTypeLabel(selectedNode?.type || '')}
-                </Tag>
+                <Tag color={getNodeColor(selectedNode.type)}>{selectedNode.type}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="ID">{selectedNode?.id}</Descriptions.Item>
             </Descriptions>
             
-            {selectedNode?.properties && Object.keys(selectedNode.properties).length > 0 && (
+            {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <Text strong>属性:</Text>
-                <div style={{ marginTop: 8 }}>
-                  {Object.entries(selectedNode.properties || {}).map(([key, value]) => (
-                    <div key={key} style={{ marginBottom: 4 }}>
-                      <Text code>{key}:</Text> {String(value)}
-                    </div>
+                <Text strong>属性信息</Text>
+                <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
+                  {Object.entries(selectedNode.properties).map(([key, value]) => (
+                    <Descriptions.Item key={key} label={key}>
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    </Descriptions.Item>
                   ))}
-                </div>
+                </Descriptions>
               </div>
             )}
           </div>
@@ -572,49 +529,15 @@ const GraphVisualization: React.FC = () => {
         
         {selectedEdge && (
           <div>
-            <Descriptions column={1}>
-              <Descriptions.Item label="关系">{selectedEdge?.label}</Descriptions.Item>
-              <Descriptions.Item label="类型">
-                <Tag>{getEdgeTypeLabel(selectedEdge?.type || '')}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="源节点">{selectedEdge?.from}</Descriptions.Item>
-              <Descriptions.Item label="目标节点">{selectedEdge?.to}</Descriptions.Item>
-              {selectedEdge?.weight && (
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label="ID">{selectedEdge.id}</Descriptions.Item>
+              <Descriptions.Item label="类型">{selectedEdge.type}</Descriptions.Item>
+              <Descriptions.Item label="源节点">{selectedEdge.from}</Descriptions.Item>
+              <Descriptions.Item label="目标节点">{selectedEdge.to}</Descriptions.Item>
+              {selectedEdge.weight && (
                 <Descriptions.Item label="权重">{selectedEdge.weight}</Descriptions.Item>
               )}
             </Descriptions>
-          </div>
-        )}
-        
-        {!selectedNode && !selectedEdge && (
-          <div>
-            <Title level={4}>图谱概览</Title>
-            <Descriptions column={1}>
-              <Descriptions.Item label="节点总数">{graphStats.nodes}</Descriptions.Item>
-              <Descriptions.Item label="边总数">{graphStats.edges}</Descriptions.Item>
-            </Descriptions>
-            
-            <Divider />
-            
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>节点类型分布:</Text>
-              {Object.entries(graphStats.nodeTypes).map(([type, count]) => (
-                <div key={type} style={{ marginTop: 8 }}>
-                  <Tag color={getNodeTypeColor(type)}>
-                    {getNodeTypeLabel(type)}: {count}
-                  </Tag>
-                </div>
-              ))}
-            </div>
-            
-            <div>
-              <Text strong>关系类型分布:</Text>
-              {Object.entries(graphStats.edgeTypes).map(([type, count]) => (
-                <div key={type} style={{ marginTop: 8 }}>
-                  <Tag>{getEdgeTypeLabel(type)}: {count}</Tag>
-                </div>
-              ))}
-            </div>
           </div>
         )}
       </Drawer>
