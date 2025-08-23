@@ -314,24 +314,48 @@ def delete_entity(driver: Driver, entity_id: str) -> bool:
 
 # === 关系相关操作 ===
 def create_relation(driver: Driver, relation: RelationCreate) -> dict:
-    """在Neo4j中创建关系"""
-    relation_id = str(uuid.uuid4())
-    query = """
-    MATCH (source:Entity {id: $source_id})
-    MATCH (target:Entity {id: $target_id})
-    CREATE (source)-[r:RELATION {
-        id: $id,
-        relation_type: $relation_type,
-        description: $description,
-        confidence: $confidence,
-        graph_id: $graph_id,
-        created_at: datetime()
-    }]->(target)
-    RETURN r, source.name as source_name, target.name as target_name
-    """
+    """在Neo4j中创建关系，如果相同类型的关系已存在则不重复创建"""
     with driver.session() as session:
+        # 首先检查是否已存在相同类型的关系
+        check_query = """
+        MATCH (source:Entity {id: $source_id})-[r:RELATION {relation_type: $relation_type}]->(target:Entity {id: $target_id})
+        RETURN r, source.name as source_name, target.name as target_name
+        """
+        
+        existing_result = session.run(
+            check_query,
+            source_id=relation.source_entity_id,
+            target_id=relation.target_entity_id,
+            relation_type=relation.relation_type
+        )
+        
+        existing_record = existing_result.single()
+        if existing_record:
+            # 如果关系已存在，返回现有关系
+            relation_data = dict(existing_record[0])
+            relation_data["source_name"] = existing_record["source_name"]
+            relation_data["target_name"] = existing_record["target_name"]
+            print(f"  ⚠️ 关系已存在，跳过创建: {existing_record['source_name']} -[{relation.relation_type}]-> {existing_record['target_name']}")
+            return relation_data
+        
+        # 如果关系不存在，创建新关系
+        relation_id = str(uuid.uuid4())
+        create_query = """
+        MATCH (source:Entity {id: $source_id})
+        MATCH (target:Entity {id: $target_id})
+        CREATE (source)-[r:RELATION {
+            id: $id,
+            relation_type: $relation_type,
+            description: $description,
+            confidence: $confidence,
+            graph_id: $graph_id,
+            created_at: datetime()
+        }]->(target)
+        RETURN r, source.name as source_name, target.name as target_name
+        """
+        
         result = session.run(
-            query,
+            create_query,
             id=relation_id,
             source_id=relation.source_entity_id,
             target_id=relation.target_entity_id,
@@ -340,6 +364,7 @@ def create_relation(driver: Driver, relation: RelationCreate) -> dict:
             confidence=relation.confidence,
             graph_id=relation.graph_id
         )
+        
         record = result.single()
         if record:
             relation_data = dict(record[0])
