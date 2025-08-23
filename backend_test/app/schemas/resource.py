@@ -24,6 +24,7 @@ class SourceResource(BaseModel):
     status: DocumentStatusEnum
     uploaded_at: datetime
     resource_type: str  # 资源类型的字符串值
+    content: Optional[str] = None  # 文档内容
 
     class Config:
         from_attributes = True

@@ -40,7 +40,7 @@ def get_graphs(
     limit: int = 100
 ):
     """
-    获取图谱列表
+    获取图谱列表，包含实体和关系统计
     """
     try:
         graphs = crud_graph.get_knowledge_graphs(driver=driver, skip=skip, limit=limit)
@@ -48,7 +48,9 @@ def get_graphs(
             graph_schemas.Graph(
                 id=graph["id"],
                 name=graph["name"],
-                description=graph.get("description")
+                description=graph.get("description"),
+                entity_count=graph.get("entity_count", 0),
+                relation_count=graph.get("relation_count", 0)
             )
             for graph in graphs
         ]

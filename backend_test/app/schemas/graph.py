@@ -13,6 +13,8 @@ class GraphCreate(GraphBase):
 
 class Graph(GraphBase):
     id: str  # 在Neo4j中我们用UUID作为唯一标识符
+    entity_count: Optional[int] = 0  # 实体数量
+    relation_count: Optional[int] = 0  # 关系数量
     
     class Config:
         from_attributes = True

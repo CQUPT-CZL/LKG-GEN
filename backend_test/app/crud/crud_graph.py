@@ -10,7 +10,7 @@ def create_knowledge_graph(driver: Driver, graph: GraphCreate) -> dict:
     """在Neo4j中创建一个新的KnowledgeGraph节点"""
     graph_id = str(uuid.uuid4())
     query = """
-    CREATE (g:图谱 {
+    CREATE (g:KnowledgeGraph {
         id: $id,
         name: $name,
         description: $description,
@@ -584,24 +584,33 @@ def get_node_by_id(driver: Driver, node_id: str) -> dict | None:
 
 
 def get_knowledge_graphs(driver: Driver, skip: int = 0, limit: int = 100) -> list:
-    """获取所有知识图谱列表"""
+    """获取所有知识图谱列表，包含实体和关系统计"""
     query = """
-    MATCH (g:图谱)
-    RETURN g
+    MATCH (g:KnowledgeGraph)
+    OPTIONAL MATCH (e:Entity {graph_id: g.id})
+    OPTIONAL MATCH ()-[r:RELATION {graph_id: g.id}]-()
+    WITH g, count(DISTINCT e) as entity_count, count(DISTINCT r) as relation_count
+    RETURN g, entity_count, relation_count
     ORDER BY g.name
     SKIP $skip
     LIMIT $limit
     """
     with driver.session() as session:
         result = session.run(query, skip=skip, limit=limit)
-        return [dict(record[0]) for record in result]
+        graphs = []
+        for record in result:
+            graph_data = dict(record[0])
+            graph_data["entity_count"] = record["entity_count"]
+            graph_data["relation_count"] = record["relation_count"]
+            graphs.append(graph_data)
+        return graphs
 
 
 def delete_knowledge_graph(driver: Driver, graph_id: str) -> bool:
     """删除知识图谱及其所有相关节点和关系"""
     query = """
     // 首先找到图谱节点
-    MATCH (g:图谱 {id: $graph_id})
+    MATCH (g:KnowledgeGraph {id: $graph_id})
     // 找到所有属于这个图谱的节点（包括分类、实体等）
     OPTIONAL MATCH (g)-[:HAS_CHILD*]->(child)
     // 删除所有相关节点和关系

@@ -7,7 +7,7 @@ import os
 
 class Settings(BaseSettings):
     # --- General App Settings ---
-    API_V1_STR: str = "/api/v1"
+    API_V1_STR: str = "/api"
     PROJECT_NAME: str = "Knowledge Graph Platform"
 
     # --- SQLite Database ---

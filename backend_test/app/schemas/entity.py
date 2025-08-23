@@ -17,6 +17,13 @@ class EntityBase(BaseModel):
 class EntityCreate(EntityBase):
     document_ids: Optional[List[int]] = None  # 关联的文档ID
 
+class EntityUpdate(BaseModel):
+    name: Optional[str] = None
+    entity_type: Optional[str] = None
+    description: Optional[str] = None
+    frequency: Optional[int] = None
+    chunk_ids: Optional[List[str]] = None
+
 class Entity(EntityBase):
     id: str
     created_at: datetime
@@ -51,6 +58,11 @@ class RelationCreate(RelationBase):
     source_entity_id: str
     target_entity_id: str
     graph_id: str  # 关系必须属于某个图谱
+
+class RelationUpdate(BaseModel):
+    relation_type: Optional[str] = None
+    description: Optional[str] = None
+    confidence: Optional[float] = None
 
 class Relation(RelationBase):
     id: str

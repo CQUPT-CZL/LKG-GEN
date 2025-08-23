@@ -1,7 +1,7 @@
 # app/api/v1/router.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import documents, graphs, categories
+from app.api.v1.endpoints import documents, graphs, categories, entities, relations
 
 # 创建v1版本的主路由
 api_router = APIRouter()
@@ -25,15 +25,14 @@ api_router.include_router(
     tags=["categories"]
 )
 
-# 未来可以在这里添加更多的路由模块
-# api_router.include_router(
-#     entities.router,
-#     prefix="/entities",
-#     tags=["entities"]
-# )
-# 
-# api_router.include_router(
-#     relations.router,
-#     prefix="/relations",
-#     tags=["relations"]
-# )
+api_router.include_router(
+    entities.router,
+    prefix="/entities",
+    tags=["entities"]
+)
+
+api_router.include_router(
+    relations.router,
+    prefix="/relations",
+    tags=["relations"]
+)
