@@ -85,6 +85,8 @@ const GraphVisualization: React.FC = () => {
   useEffect(() => {
     if (selectedGraph) {
       loadDocuments();
+      // 同时加载图谱级子图谱，便于直接查看整图 🔎
+      loadGraphSubgraph();
     }
   }, [selectedGraph]);
 
@@ -118,7 +120,9 @@ const GraphVisualization: React.FC = () => {
 
   const loadDocuments = async () => {
     try {
-      const documentsData = await apiService.getDocuments();
+      const documentsData = selectedGraph 
+        ? await apiService.getGraphDocuments(selectedGraph.id)
+        : await apiService.getDocuments();
       setDocuments(documentsData);
     } catch (error) {
       console.error('加载文档失败:', error);
@@ -141,6 +145,22 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
+  // 新增：加载图谱级子图谱（整张图）
+  const loadGraphSubgraph = async () => {
+    if (!selectedGraph) return;
+
+    setLoading(true);
+    try {
+      const subgraphData = await apiService.getGraphSubgraph(selectedGraph.id);
+      setSubgraph(subgraphData);
+    } catch (error) {
+      console.error('加载图谱子图谱失败:', error);
+      message.error('加载图谱子图谱失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const buildNetworkData = () => {
     if (!subgraph) return;
 
@@ -154,15 +174,21 @@ const GraphVisualization: React.FC = () => {
       font: { size: showLabels ? 14 : 0 }
     }));
 
-    const edges: GraphEdge[] = subgraph.relationships.map(rel => ({
-      id: rel.id.toString(),
-      from: rel.source_entity_id.toString(),
-      to: rel.target_entity_id.toString(),
-      label: showLabels ? rel.relation_type : '',
-      type: rel.relation_type,
-      width: edgeWidth,
-      arrows: { to: { enabled: true } }
-    }));
+    const edges: GraphEdge[] = subgraph.relationships.map(rel => {
+      const anyRel: any = rel as any;
+      const fromId = (anyRel.source_entity_id ?? anyRel.start_node_id ?? '').toString();
+      const toId = (anyRel.target_entity_id ?? anyRel.end_node_id ?? '').toString();
+      const relType = (anyRel.relation_type ?? anyRel.type ?? '') as string;
+      return {
+        id: (anyRel.id ?? '').toString(),
+        from: fromId,
+        to: toId,
+        label: showLabels ? relType : '',
+        type: relType,
+        width: edgeWidth,
+        arrows: { to: { enabled: true } }
+      } as GraphEdge;
+    });
 
     setNetworkData({ nodes, edges });
     calculateStats(nodes, edges);
@@ -367,6 +393,10 @@ const GraphVisualization: React.FC = () => {
                       </Option>
                     ))}
                   </Select>
+                )}
+
+                {selectedGraph && (
+                  <Button type="primary" onClick={loadGraphSubgraph} icon={<SearchOutlined />}>加载图谱子图谱</Button>
                 )}
               </Space>
             }

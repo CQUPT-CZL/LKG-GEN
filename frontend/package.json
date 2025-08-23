@@ -50,7 +50,7 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:8000",
+  "proxy": "http://localhost:8002",
   "homepage": ".",
   "devDependencies": {
     "@types/file-saver": "^2.0.7"

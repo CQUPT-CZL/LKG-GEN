@@ -605,6 +605,83 @@ def get_knowledge_graphs(driver: Driver, skip: int = 0, limit: int = 100) -> lis
             graphs.append(graph_data)
         return graphs
 
+# === 新增：按图谱获取分类列表 ===
+
+def get_categories_by_graph(driver: Driver, graph_id: str) -> list:
+    """获取指定图谱下的所有分类（任意层级）"""
+    query = """
+    MATCH (g:KnowledgeGraph {id: $graph_id})-[:HAS_CHILD*]->(c:Category)
+    RETURN DISTINCT c
+    ORDER BY c.name
+    """
+    with driver.session() as session:
+        result = session.run(query, graph_id=graph_id)
+        return [dict(record[0]) for record in result]
+
+# === 新增：获取整张图谱的子图谱（实体+边） ===
+
+def get_graph_subgraph(driver: Driver, graph_id: str) -> dict:
+    """获取某个图谱下的全部实体集合及其内部的关系列表"""
+    query = """
+    // 收集该图谱的所有实体
+    MATCH (e:Entity {graph_id: $graph_id})
+    WITH COLLECT(DISTINCT e) AS subgraph_entities
+    // 在实体集合内部查找关系
+    UNWIND subgraph_entities AS e1
+    MATCH (e1)-[r:RELATION {graph_id: $graph_id}]-(e2)
+    WHERE e2 IN subgraph_entities
+    RETURN COLLECT(DISTINCT e1) AS entities,
+           COLLECT(DISTINCT {relation: r, start_node: startNode(r), end_node: endNode(r)}) AS relationships
+    """
+    with driver.session() as session:
+        result = session.run(query, graph_id=graph_id)
+        record = result.single()
+        if not record:
+            return {"entities": [], "relationships": []}
+        # 处理实体
+        entity_list = []
+        for e in record["entities"]:
+            props = dict(e)
+            processed = {}
+            for k, v in props.items():
+                if hasattr(v, 'iso_format'):
+                    processed[k] = v.iso_format()
+                elif isinstance(v, list):
+                    processed[k] = [str(item) for item in v]
+                else:
+                    processed[k] = v
+            entity_list.append({
+                "id": processed.get("id", ""),
+                "name": processed.get("name", ""),
+                # 兼容 entity_type 与 type 两种字段
+                "type": processed.get("entity_type") or processed.get("type"),
+                "properties": processed
+            })
+        # 处理关系
+        rel_list = []
+        for rel_data in record["relationships"]:
+            r = rel_data["relation"]
+            start_node = rel_data["start_node"]
+            end_node = rel_data["end_node"]
+            r_props = dict(r)
+            processed_r = {}
+            for k, v in r_props.items():
+                if hasattr(v, 'iso_format'):
+                    processed_r[k] = v.iso_format()
+                elif isinstance(v, list):
+                    processed_r[k] = [str(item) for item in v]
+                else:
+                    processed_r[k] = v
+            rel_list.append({
+                "id": processed_r.get("id", str(getattr(r, 'id', ''))),
+                # 标准化字段以兼容前端
+                "relation_type": getattr(r, 'type', None) or processed_r.get("relation_type") or processed_r.get("type", ""),
+                "source_entity_id": start_node.get("id", ""),
+                "target_entity_id": end_node.get("id", ""),
+                "properties": processed_r
+            })
+        return {"entities": entity_list, "relationships": rel_list}
+
 
 def delete_knowledge_graph(driver: Driver, graph_id: str) -> bool:
     """删除知识图谱及其所有相关节点和关系"""
@@ -650,3 +727,21 @@ def create_resource_node(driver: Driver, resource: ResourceCreate, sqlite_doc_id
             sqlite_doc_id=sqlite_doc_id
         )
         return result.single()[0]
+
+
+def get_document_ids_by_graph(driver: Driver, graph_id: str) -> list[int]:
+    """获取图谱下所有资源(Document)对应的SQLite文档ID列表"""
+    query = """
+    MATCH (g:KnowledgeGraph {id: $graph_id})
+    OPTIONAL MATCH (g)-[:HAS_CHILD*0..]->(parent)-[:CONTAINS_RESOURCE]->(d:Document)
+    WITH collect(DISTINCT d.source_document_id) AS ids
+    RETURN [id IN ids WHERE id IS NOT NULL] AS doc_ids
+    """
+    with driver.session() as session:
+        result = session.run(query, graph_id=graph_id)
+        record = result.single()
+        if not record:
+            return []
+        doc_ids = record.get("doc_ids") or []
+        # 转为int类型，过滤None
+        return [int(i) for i in doc_ids if i is not None]

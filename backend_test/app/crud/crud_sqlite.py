@@ -5,6 +5,7 @@ from typing import List, Optional
 from app.models import sqlite_models
 from app.schemas import resource as resource_schemas
 
+
 def create_source_document(db: Session, filename: str, content: str, resource_type: str = None) -> sqlite_models.SourceDocument:
     """
     在数据库中创建一条新的源文档记录。
@@ -48,6 +49,15 @@ def get_source_document(db: Session, document_id: str) -> Optional[sqlite_models
     :return: 源文档对象或None
     """
     return db.query(sqlite_models.SourceDocument).filter(sqlite_models.SourceDocument.id == document_id).first()
+
+
+def get_source_documents_by_ids(db: Session, document_ids: List[int]) -> List[sqlite_models.SourceDocument]:
+    """
+    根据一组ID批量获取源文档列表
+    """
+    if not document_ids:
+        return []
+    return db.query(sqlite_models.SourceDocument).filter(sqlite_models.SourceDocument.id.in_(document_ids)).all()
 
 
 def delete_source_document(db: Session, document_id: int) -> bool:

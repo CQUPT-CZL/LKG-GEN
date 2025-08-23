@@ -9,27 +9,23 @@ import {
   Form,
   Input,
   message,
-  Popconfirm,
   Row,
   Col,
   Tag,
   Select
 } from 'antd';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  EyeOutlined
+  PlusOutlined
 } from '@ant-design/icons';
-import { apiService, Category, Graph, SourceResource, Subgraph } from '../services/api';
+import { apiService, Category, Graph, Subgraph } from '../services/api';
 
 const { Title } = Typography;
-const { TextArea } = Input;
 const { Option } = Select;
 
 const CategoryManager: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [selectedGraph, setSelectedGraph] = useState<Graph | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [subgraph, setSubgraph] = useState<Subgraph | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -41,19 +37,35 @@ const CategoryManager: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (selectedGraph) {
+      loadCategoriesByGraph(selectedGraph.id);
+    } else {
+      setCategories([]);
+    }
+  }, [selectedGraph]);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      // 注意：新API中没有获取所有分类的接口，这里只能获取图谱列表
       const graphsData = await apiService.getGraphs();
       setGraphs(graphsData);
-      // 暂时设置空的分类列表，因为API不支持获取所有分类
-      setCategories([]);
+      setSelectedGraph(graphsData.length > 0 ? graphsData[0] : null);
     } catch (error) {
       console.error('加载数据失败:', error);
       message.error('加载数据失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCategoriesByGraph = async (graphId: string) => {
+    try {
+      const list = await apiService.getGraphCategories(graphId);
+      setCategories(list);
+    } catch (error) {
+      console.error('加载分类失败:', error);
+      message.error('加载分类失败');
     }
   };
 
@@ -67,56 +79,33 @@ const CategoryManager: React.FC = () => {
     }
   };
 
-  const handleView = (category: Category) => {
-    setSelectedCategory(category);
-    loadCategorySubgraph(category.id);
-  };
-
   const handleAdd = () => {
     setEditingCategory(null);
     form.resetFields();
+    // 默认父节点为当前选择的图谱
+    form.setFieldsValue({ parent_id: selectedGraph?.id });
     setIsModalVisible(true);
-  };
-
-  const handleEdit = (category: Category) => {
-    setEditingCategory(category);
-    form.setFieldsValue({
-      name: category.name
-    });
-    setIsModalVisible(true);
-  };
-
-  const handleDelete = async (categoryId: string) => {
-    try {
-      await apiService.deleteCategory(categoryId);
-      message.success('分类删除成功');
-      loadData();
-      if (selectedCategory?.id === categoryId) {
-        setSelectedCategory(null);
-        setSubgraph(null);
-      }
-    } catch (error) {
-      console.error('删除分类失败:', error);
-      message.error('删除分类失败');
-    }
   };
 
   const handleModalOk = async () => {
     try {
       const values = await form.validateFields();
-      
-      if (editingCategory) {
-        // 注意：新API中没有更新分类的接口，这里只是示例
-        message.info('当前API不支持更新分类功能');
-      } else {
+      if (!editingCategory) {
+        if (!values.parent_id) {
+          message.warning('请选择父节点（图谱或分类）');
+          return;
+        }
         await apiService.createCategory({
           name: values.name,
-          parent_id: 'root'
+          parent_id: values.parent_id,
         });
         message.success('分类创建成功');
-        loadData();
+        if (selectedGraph) {
+          await loadCategoriesByGraph(selectedGraph.id);
+        }
+      } else {
+        message.info('当前API不支持更新分类功能');
       }
-      
       setIsModalVisible(false);
       form.resetFields();
     } catch (error) {
@@ -130,7 +119,7 @@ const CategoryManager: React.FC = () => {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
-      width: 80,
+      width: 120,
     },
     {
       title: '分类名称',
@@ -138,47 +127,10 @@ const CategoryManager: React.FC = () => {
       key: 'name',
     },
     {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
-      ellipsis: true,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 200,
-      render: (_: any, record: Category) => (
-         <Space size="middle">
-           <Button
-             type="link"
-             icon={<EyeOutlined />}
-             onClick={() => handleView(record)}
-           >
-             查看
-           </Button>
-           <Button
-             type="link"
-             icon={<EditOutlined />}
-             onClick={() => handleEdit(record)}
-           >
-             编辑
-           </Button>
-           <Popconfirm
-             title="确定要删除这个分类吗？"
-             onConfirm={() => handleDelete(record.id)}
-             okText="确定"
-             cancelText="取消"
-           >
-             <Button
-               type="link"
-               danger
-               icon={<DeleteOutlined />}
-             >
-               删除
-             </Button>
-           </Popconfirm>
-         </Space>
-       ),
+      title: '父节点',
+      dataIndex: 'parent_id',
+      key: 'parent_id',
+      width: 180,
     },
   ];
 
@@ -189,13 +141,29 @@ const CategoryManager: React.FC = () => {
           <Card
             title={<Title level={3}>📁 分类管理</Title>}
             extra={
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAdd}
-              >
-                新建分类
-              </Button>
+              <Space>
+                <Select
+                  style={{ minWidth: 220 }}
+                  placeholder="选择图谱以查看分类"
+                  value={selectedGraph?.id}
+                  onChange={(val) => {
+                    const g = graphs.find(x => x.id === val) || null;
+                    setSelectedGraph(g);
+                  }}
+                >
+                  {graphs.map(g => (
+                    <Option key={g.id} value={g.id}>{g.name}</Option>
+                  ))}
+                </Select>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleAdd}
+                  disabled={!selectedGraph}
+                >
+                  新建分类
+                </Button>
+              </Space>
             }
           >
             <Table
@@ -212,7 +180,44 @@ const CategoryManager: React.FC = () => {
             />
           </Card>
         </Col>
-        
+
+        {/* 新建/编辑分类弹窗 */}
+        <Modal
+          title={editingCategory ? '编辑分类' : '新建分类'}
+          open={isModalVisible}
+          onOk={handleModalOk}
+          onCancel={() => setIsModalVisible(false)}
+          okText="保存"
+          cancelText="取消"
+          destroyOnClose
+        >
+          <Form form={form} layout="vertical" preserve={false}>
+            <Form.Item
+              label="分类名称"
+              name="name"
+              rules={[{ required: true, message: '请输入分类名称' }]}
+            >
+              <Input placeholder="请输入分类名称" />
+            </Form.Item>
+            <Form.Item
+              label="父节点（图谱或分类）"
+              name="parent_id"
+              rules={[{ required: true, message: '请选择父节点' }]}
+            >
+              <Select placeholder="请选择父节点">
+                {selectedGraph && (
+                  <Option key={`graph-${selectedGraph.id}`} value={selectedGraph.id}>
+                    图谱：{selectedGraph.name}
+                  </Option>
+                )}
+                {categories.map(c => (
+                  <Option key={c.id} value={c.id}>分类：{c.name}</Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </Form>
+        </Modal>
+
         {selectedCategory && (
           <Col span={24}>
             <Card title={`📊 分类详情: ${selectedCategory.name}`}>
@@ -221,7 +226,7 @@ const CategoryManager: React.FC = () => {
                   <Card size="small" title="基本信息">
                     <p><strong>ID:</strong> {selectedCategory.id}</p>
                     <p><strong>名称:</strong> {selectedCategory.name}</p>
-                    <p><strong>名称:</strong> {selectedCategory.name}</p>
+                    <p><strong>父节点:</strong> {selectedCategory.parent_id}</p>
                   </Card>
                 </Col>
                 <Col span={12}>
@@ -249,37 +254,6 @@ const CategoryManager: React.FC = () => {
           </Col>
         )}
       </Row>
-
-      <Modal
-        title={editingCategory ? '编辑分类' : '新建分类'}
-        open={isModalVisible}
-        onOk={handleModalOk}
-        onCancel={() => {
-          setIsModalVisible(false);
-          form.resetFields();
-        }}
-        okText="确定"
-        cancelText="取消"
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          name="categoryForm"
-        >
-          <Form.Item
-            name="name"
-            label="分类名称"
-            rules={[
-              { required: true, message: '请输入分类名称' },
-              { max: 100, message: '分类名称不能超过100个字符' }
-            ]}
-          >
-            <Input placeholder="请输入分类名称" />
-          </Form.Item>
-          
-
-        </Form>
-      </Modal>
     </div>
   );
 };

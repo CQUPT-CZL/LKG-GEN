@@ -172,6 +172,15 @@ export const apiService = {
     api.get(`/graphs/?skip=${skip}&limit=${limit}`),
   getGraph: (graphId: string): Promise<Graph> => 
     api.get(`/graphs/${graphId}`),
+  // 新增：获取图谱下的分类列表
+  getGraphCategories: (graphId: string): Promise<Category[]> => 
+    api.get(`/graphs/${graphId}/categories`),
+  // 新增：获取图谱级别的子图谱
+  getGraphSubgraph: (graphId: string): Promise<Subgraph> => 
+    api.get(`/graphs/${graphId}/subgraph`),
+  // 新增：获取图谱下的文档列表（根据Neo4j关联）
+  getGraphDocuments: (graphId: string): Promise<SourceResource[]> => 
+    api.get(`/graphs/${graphId}/documents`),
   createGraph: (data: { name: string; description?: string }): Promise<Graph> => 
     api.post('/graphs/', data),
   deleteGraph: (graphId: string): Promise<{ message: string }> => 
