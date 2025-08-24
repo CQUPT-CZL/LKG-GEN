@@ -18,6 +18,8 @@ dependencies = [
     "python-jose>=3.5.0",
     "passlib>=1.7.4",
     "psutil>=7.0.0",
+    "sqlalchemy>=2.0.43",
+    "pydantic-settings>=2.10.1",
 ]
 
 [[tool.uv.index]]

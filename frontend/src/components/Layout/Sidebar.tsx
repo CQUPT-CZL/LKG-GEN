@@ -11,7 +11,8 @@ import {
   DatabaseOutlined,
   ShareAltOutlined,
   UnorderedListOutlined,
-  FolderOutlined
+  FolderOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -28,19 +29,9 @@ const Sidebar: React.FC = () => {
       label: '仪表板',
     },
     {
-      key: 'builder',
+      key: '/builder',
       icon: <BuildOutlined />,
       label: '知识图谱构建',
-      children: [
-        {
-          key: '/tasks',
-          label: '任务管理',
-        },
-        {
-          key: '/builder',
-          label: '实时构建',
-        },
-      ],
     },
     {
       key: 'manager',
@@ -50,6 +41,10 @@ const Sidebar: React.FC = () => {
         {
           key: '/manager',
           label: '图谱概览',
+        },
+        {
+          key: '/documents',
+          label: '文档管理',
         },
         {
           key: '/entities',
