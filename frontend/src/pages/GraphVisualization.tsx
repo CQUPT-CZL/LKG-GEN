@@ -49,6 +49,7 @@ interface GraphEdge extends Edge {
   to: string;
   label: string;
   type: string;
+  description?: string;
   weight?: number;
 }
 
@@ -239,14 +240,24 @@ const GraphVisualization: React.FC = () => {
 
     const nodes: GraphNode[] = subgraph.entities.map(entity => {
       const nodeType: string = (entity.type as string) || (entity.properties?.entity_type as string) || 'Unknown';
+      const nodeColor = getNodeColor(nodeType);
+      
+
+      
       return {
         id: entity.id.toString(),
         label: entity.name,
         type: nodeType,
         properties: entity.properties,
-        color: getNodeColor(nodeType),
-        size: nodeSize,
-        font: { size: showLabels ? 14 : 0 }
+        color: {
+          background: nodeColor,
+          border: '#2B7CE9',
+          highlight: {
+            background: nodeColor,
+            border: '#2B7CE9'
+          }
+        },
+        size: nodeSize
       } as GraphNode;
     });
 
@@ -255,12 +266,20 @@ const GraphVisualization: React.FC = () => {
       const fromId = (anyRel.source_entity_id ?? anyRel.start_node_id ?? '').toString();
       const toId = (anyRel.target_entity_id ?? anyRel.end_node_id ?? '').toString();
       const relType = (anyRel.relation_type ?? anyRel.type ?? '') as string;
+      const description = anyRel.description || '';
+      
+      console.log('Edge data:', { id: anyRel.id, relType, description, anyRel });
+      
+      const titleText = description ? `关系类型: ${relType}\n描述: ${description}` : `关系类型: ${relType}`;
+      
       return {
         id: (anyRel.id ?? '').toString(),
         from: fromId,
         to: toId,
         label: relType,
         type: relType,
+        description: description,
+        title: titleText, // 添加悬浮提示
         width: edgeWidth,
         arrows: 'to'
       } as GraphEdge;
@@ -270,17 +289,48 @@ const GraphVisualization: React.FC = () => {
     calculateStats(nodes, edges);
   };
 
+  // 动态生成节点颜色的函数
   const getNodeColor = (type: string): string => {
-    const colors: Record<string, string> = {
+    // 预定义一些常见类型的颜色
+    const predefinedColors: Record<string, string> = {
       'Person': '#ff7875',
       'Organization': '#40a9ff',
       'Location': '#73d13d',
       'Event': '#ffb347',
       'Concept': '#b37feb',
       'Product': '#ffc069',
-      'Technology': '#36cfc9'
+      'Technology': '#36cfc9',
+      '人物': '#ff7875',
+      '组织': '#40a9ff',
+      '地点': '#73d13d',
+      '事件': '#ffb347',
+      '概念': '#b37feb',
+      '产品': '#ffc069',
+      '技术': '#36cfc9'
     };
-    return colors[type] || '#d9d9d9';
+    
+    // 如果有预定义颜色，直接返回
+    if (predefinedColors[type]) {
+      return predefinedColors[type];
+    }
+    
+    // 动态生成颜色：使用字符串哈希生成HSL颜色
+    const hashCode = (str: string): number => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // 转换为32位整数
+      }
+      return Math.abs(hash);
+    };
+    
+    const hash = hashCode(type);
+    const hue = hash % 360; // 色相：0-359
+    const saturation = 60 + (hash % 30); // 饱和度：60-89
+    const lightness = 50 + (hash % 20); // 亮度：50-69
+    
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
 
   const calculateStats = (nodes: GraphNode[], edges: GraphEdge[]) => {
@@ -304,18 +354,29 @@ const GraphVisualization: React.FC = () => {
   };
 
   const initializeNetwork = () => {
-    if (!networkRef.current) return;
+    if (!networkRef.current || !networkData) return;
 
     const options: Options = {
       nodes: {
-        shape: 'dot',
+        shape: 'circle',
         size: nodeSize,
         font: {
-          size: showLabels ? 14 : 0,
-          color: '#343434'
+          size: showLabels ? Math.max(12, Math.min(nodeSize / 2.5, 18)) : 0,
+          color: '#ffffff',
+          face: 'Arial, sans-serif',
+          strokeWidth: 3,
+          strokeColor: '#000000',
+          align: 'center',
+          vadjust: 0
         },
         borderWidth: 2,
-        shadow: true
+        shadow: {
+          enabled: true,
+          color: 'rgba(0,0,0,0.3)',
+          size: 10,
+          x: 5,
+          y: 5
+        }
       },
       edges: {
         width: edgeWidth,
@@ -339,7 +400,8 @@ const GraphVisualization: React.FC = () => {
       },
       interaction: {
         hover: true,
-        selectConnectedEdges: false
+        selectConnectedEdges: false,
+        multiselect: true
       },
       layout: {
         improvedLayout: true
@@ -660,6 +722,9 @@ const GraphVisualization: React.FC = () => {
             <Descriptions column={1} bordered size="small">
               <Descriptions.Item label="ID">{selectedEdge.id}</Descriptions.Item>
               <Descriptions.Item label="类型">{selectedEdge.type}</Descriptions.Item>
+              {selectedEdge.description && (
+                <Descriptions.Item label="描述">{selectedEdge.description}</Descriptions.Item>
+              )}
               <Descriptions.Item label="源节点">{selectedEdge.from}</Descriptions.Item>
               <Descriptions.Item label="目标节点">{selectedEdge.to}</Descriptions.Item>
               {selectedEdge.weight && (

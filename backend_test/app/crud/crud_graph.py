@@ -93,7 +93,8 @@ def get_document_subgraph(driver: Driver, document_id: int) -> dict:
             
             relationships.append({
                 "id": processed_rel_properties.get("id", str(relation.id)),
-                "type": relation.type,
+                "type": processed_rel_properties.get("relation_type") or processed_rel_properties.get("type", "") or relation.type or "",
+                "description": processed_rel_properties.get("description", ""),
                 "start_node_id": start_node.get("id", ""),
                 "end_node_id": end_node.get("id", ""),
                 "properties": processed_rel_properties
@@ -138,7 +139,7 @@ def get_category_subgraph(driver: Driver, category_id: str) -> dict:
         entities = []
         for entity_node in record["entities"]:
             # 打印实体节点的属性
-            print(f"Entity Node: {entity_node}")
+            # print(f"Entity Node: {entity_node}")
 
             # 转换Neo4j特殊类型为Python标准类型
             properties = {}
@@ -176,7 +177,8 @@ def get_category_subgraph(driver: Driver, category_id: str) -> dict:
             
             relationships.append({
                 "id": str(rel.id),
-                "type": rel.type,
+                "type": rel_properties.get("relation_type") or rel_properties.get("type", "") or rel.type or "",
+                "description": rel_properties.get("description", ""),
                 "start_node_id": start_node["id"],
                 "end_node_id": end_node["id"],
                 "properties": rel_properties
@@ -674,8 +676,9 @@ def get_graph_subgraph(driver: Driver, graph_id: str) -> dict:
                     processed_r[k] = v
             rel_list.append({
                 "id": processed_r.get("id", str(getattr(r, 'id', ''))),
-                # 标准化字段以兼容前端
-                "relation_type": getattr(r, 'type', None) or processed_r.get("relation_type") or processed_r.get("type", ""),
+                # 标准化字段以兼容前端 - 优先使用属性中的relation_type
+                "relation_type": processed_r.get("relation_type") or processed_r.get("type", "") or getattr(r, 'type', None) or "",
+                "description": processed_r.get("description", ""),
                 "source_entity_id": start_node.get("id", ""),
                 "target_entity_id": end_node.get("id", ""),
                 "properties": processed_r
