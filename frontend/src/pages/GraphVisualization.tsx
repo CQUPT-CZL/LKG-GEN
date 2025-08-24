@@ -63,6 +63,79 @@ interface GraphStats {
 // 新增：分类树节点类型定义
 type CategoryTreeNode = { title: string; value: string; key: string; children?: CategoryTreeNode[] };
 
+// --- 新增辅助函数 ---
+
+// 获取与背景色对比度高的文本颜色
+const getContrastingTextColor = (bgColor: string): string => {
+  const color = bgColor.startsWith('hsl') ? hslToRgb(bgColor) : hexToRgb(bgColor);
+  if (!color) return '#ffffff'; // 默认白色
+
+  // 计算亮度 (YIQ)
+  const luminance = (color.r * 299 + color.g * 587 + color.b * 114) / 1000;
+  return luminance >= 128 ? '#000000' : '#ffffff';
+};
+
+// HSL颜色转RGB
+const hslToRgb = (hsl: string): { r: number; g: number; b: number } | null => {
+  const match = /hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/.exec(hsl);
+  if (!match) return null;
+
+  let h = parseInt(match[1], 10);
+  let s = parseInt(match[2], 10) / 100;
+  let l = parseInt(match[3], 10) / 100;
+
+  let c = (1 - Math.abs(2 * l - 1)) * s,
+      x = c * (1 - Math.abs((h / 60) % 2 - 1)),
+      m = l - c/2,
+      r = 0,
+      g = 0,
+      b = 0;
+
+  if (0 <= h && h < 60) {
+    r = c; g = x; b = 0;
+  } else if (60 <= h && h < 120) {
+    r = x; g = c; b = 0;
+  } else if (120 <= h && h < 180) {
+    r = 0; g = c; b = x;
+  } else if (180 <= h && h < 240) {
+    r = 0; g = x; b = c;
+  } else if (240 <= h && h < 300) {
+    r = x; g = 0; b = c;
+  } else if (300 <= h && h < 360) {
+    r = c; g = 0; b = x;
+  }
+  r = Math.round((r + m) * 255);
+  g = Math.round((g + m) * 255);
+  b = Math.round((b + m) * 255);
+
+  return { r, g, b };
+}
+
+// Hex颜色转RGB
+const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
+// 增加颜色亮度
+const lightenColor = (color: string, percent: number): string => {
+  const rgb = color.startsWith('hsl') ? hslToRgb(color) : hexToRgb(color);
+  if (!rgb) return color;
+
+  const amount = Math.round(2.55 * percent * 100);
+  
+  const r = Math.min(255, rgb.r + amount);
+  const g = Math.min(255, rgb.g + amount);
+  const b = Math.min(255, rgb.b + amount);
+
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+
 const GraphVisualization: React.FC = () => {
   const [graphs, setGraphs] = useState<Graph[]>([]);
   const [documents, setDocuments] = useState<SourceResource[]>([]);
@@ -241,9 +314,8 @@ const GraphVisualization: React.FC = () => {
     const nodes: GraphNode[] = subgraph.entities.map(entity => {
       const nodeType: string = (entity.type as string) || (entity.properties?.entity_type as string) || 'Unknown';
       const nodeColor = getNodeColor(nodeType);
-      
+      const fontColor = getContrastingTextColor(nodeColor);
 
-      
       return {
         id: entity.id.toString(),
         label: entity.name,
@@ -253,9 +325,19 @@ const GraphVisualization: React.FC = () => {
           background: nodeColor,
           border: '#2B7CE9',
           highlight: {
-            background: nodeColor,
-            border: '#2B7CE9'
+            background: lightenColor(nodeColor, 0.2),
+            border: '#FFC107'
+          },
+          hover: {
+            background: lightenColor(nodeColor, 0.1),
+            border: '#FFC107'
           }
+        },
+        font: {
+          color: fontColor,
+          size: 14,
+          strokeWidth: 0.5,
+          strokeColor: fontColor === '#ffffff' ? '#000000' : '#ffffff'
         },
         size: nodeSize
       } as GraphNode;
@@ -358,54 +440,79 @@ const GraphVisualization: React.FC = () => {
 
     const options: Options = {
       nodes: {
-        shape: 'circle',
+        shape: 'dot',
         size: nodeSize,
         font: {
-          size: showLabels ? Math.max(12, Math.min(nodeSize / 2.5, 18)) : 0,
-          color: '#ffffff',
-          face: 'Arial, sans-serif',
-          strokeWidth: 3,
-          strokeColor: '#000000',
-          align: 'center',
-          vadjust: 0
+          size: showLabels ? 14 : 0,
+          face: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"'
         },
         borderWidth: 2,
+        borderWidthSelected: 4,
         shadow: {
           enabled: true,
-          color: 'rgba(0,0,0,0.3)',
-          size: 10,
-          x: 5,
-          y: 5
-        }
+          color: 'rgba(0,0,0,0.2)',
+          size: 7,
+          x: 3,
+          y: 3
+        },
       },
       edges: {
         width: edgeWidth,
-        color: { inherit: 'from' },
+        color: { 
+          color: '#cccccc',
+          highlight: '#FFC107',
+          hover: '#e0e0e0',
+          inherit: false
+        },
         smooth: {
           enabled: true,
-          type: 'continuous',
+          type: 'dynamic',
           roundness: 0.5
         },
         arrows: {
-          to: { enabled: true, scaleFactor: 1 }
+          to: { enabled: true, scaleFactor: 0.8 }
         },
         font: {
           size: showLabels ? 12 : 0,
-          align: 'middle'
+          align: 'middle',
+          strokeWidth: 0,
+          color: '#888888'
         }
       },
       physics: {
         enabled: physics,
-        stabilization: { iterations: 100 }
+        barnesHut: {
+          gravitationalConstant: -30000,
+          centralGravity: 0.3,
+          springLength: 150,
+          springConstant: 0.05,
+          damping: 0.09,
+          avoidOverlap: 0.1
+        },
+        stabilization: { 
+          iterations: 200,
+          fit: true
+        }
       },
       interaction: {
         hover: true,
-        selectConnectedEdges: false,
-        multiselect: true
+        hoverConnectedEdges: true,
+        selectConnectedEdges: true,
+        multiselect: true,
+        tooltipDelay: 200,
+        keyboard: {
+          enabled: true
+        }
       },
       layout: {
-        improvedLayout: true
-      }
+        improvedLayout: true,
+        hierarchical: {
+          enabled: false
+        }
+      },
+      manipulation: {
+        enabled: true, // 允许用户编辑图形
+      },
     };
 
     if (networkInstance.current) {
