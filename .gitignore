@@ -85,3 +85,4 @@ frontend_test.txt
 # Lock files (optional, depends on team preference)
 # uv.lock
 # pnpm-lock.yaml
+backend_test/kg_platform.db
