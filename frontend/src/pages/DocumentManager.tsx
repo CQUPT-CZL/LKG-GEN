@@ -81,9 +81,69 @@ const DocumentManager: React.FC = () => {
   // 删除文档
   const handleDelete = async (record: SourceResource) => {
     try {
-      await apiService.deleteDocument(record.id);
-      message.success('文档删除成功');
-      loadDocuments();
+      const result = await apiService.deleteDocument(record.id);
+      
+      // 展示删除详情
+      const { details } = result;
+      const deletedCount = details.deleted_entities?.length || 0;
+      const updatedCount = details.updated_entities?.length || 0;
+      
+      Modal.success({
+        title: '🎉 文档删除成功',
+        width: 600,
+        content: (
+          <div style={{ marginTop: 16 }}>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="📄 文档名称">{record.filename}</Descriptions.Item>
+              <Descriptions.Item label="🗑️ 删除的实体数量">
+                <Tag color="red">{deletedCount} 个</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="🔄 更新的实体数量">
+                <Tag color="blue">{updatedCount} 个</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="📊 Neo4j文档节点">
+                <Tag color={details.neo4j_document_deleted ? "green" : "orange"}>
+                  {details.neo4j_document_deleted ? "✅ 删除成功" : "⚠️ 未找到"}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="💾 SQLite记录">
+                <Tag color={details.sqlite_document_deleted ? "green" : "red"}>
+                  {details.sqlite_document_deleted ? "✅ 删除成功" : "❌ 删除失败"}
+                </Tag>
+              </Descriptions.Item>
+            </Descriptions>
+            
+            {deletedCount > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4>🗑️ 已删除的实体：</h4>
+                <div style={{ maxHeight: 120, overflow: 'auto' }}>
+                  {details.deleted_entities.map((entity: string, index: number) => (
+                    <Tag key={index} color="red" style={{ margin: '2px' }}>
+                      {entity}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {updatedCount > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4>🔄 已更新的实体：</h4>
+                <div style={{ maxHeight: 120, overflow: 'auto' }}>
+                  {details.updated_entities.map((entity: string, index: number) => (
+                    <Tag key={index} color="blue" style={{ margin: '2px' }}>
+                      {entity}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ),
+        onOk: () => {
+          loadDocuments();
+        }
+      });
     } catch (error) {
       console.error('删除文档失败:', error);
       message.error('删除文档失败');
@@ -98,12 +158,66 @@ const DocumentManager: React.FC = () => {
     }
 
     try {
+      const results = [];
+      let totalDeletedEntities = 0;
+      let totalUpdatedEntities = 0;
+      let successCount = 0;
+      let failedCount = 0;
+
       for (const id of selectedRowKeys) {
-        await apiService.deleteDocument(id as number);
+        try {
+          const result = await apiService.deleteDocument(id as number);
+          results.push({ id, success: true, result });
+          totalDeletedEntities += result.details.deleted_entities?.length || 0;
+          totalUpdatedEntities += result.details.updated_entities?.length || 0;
+          successCount++;
+        } catch (error) {
+          results.push({ id, success: false, error });
+          failedCount++;
+        }
       }
-      message.success(`成功删除 ${selectedRowKeys.length} 个文档`);
-      setSelectedRowKeys([]);
-      loadDocuments();
+
+      // 展示批量删除结果
+      Modal.success({
+        title: '📊 批量删除完成',
+        width: 700,
+        content: (
+          <div style={{ marginTop: 16 }}>
+            <Descriptions column={2} size="small">
+              <Descriptions.Item label="✅ 成功删除">
+                <Tag color="green">{successCount} 个文档</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="❌ 删除失败">
+                <Tag color="red">{failedCount} 个文档</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="🗑️ 总删除实体">
+                <Tag color="red">{totalDeletedEntities} 个</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="🔄 总更新实体">
+                <Tag color="blue">{totalUpdatedEntities} 个</Tag>
+              </Descriptions.Item>
+            </Descriptions>
+            
+            {failedCount > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ color: '#ff4d4f' }}>❌ 删除失败的文档：</h4>
+                {results
+                   .filter(r => !r.success)
+                   .map((r, index) => (
+                     <Tag key={index} color="red" style={{ margin: '2px' }}>
+                       {`ID: ${r.id}`}
+                     </Tag>
+                   ))
+                 }
+              </div>
+            )}
+          </div>
+        ),
+        onOk: () => {
+          setSelectedRowKeys([]);
+          loadDocuments();
+        }
+      });
     } catch (error) {
       console.error('批量删除失败:', error);
       message.error('批量删除失败');
