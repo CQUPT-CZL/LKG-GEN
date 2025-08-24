@@ -97,43 +97,7 @@ export interface BatchResourceResponse {
   failed_resources: any[];
 }
 
-// 任务相关类型定义
-export enum TaskType {
-  KNOWLEDGE_GRAPH_BUILD = 'knowledge_graph_build',
-  ENTITY_EXTRACTION = 'entity_extraction',
-  RELATION_EXTRACTION = 'relation_extraction'
-}
-
-export enum TaskStatus {
-  PENDING = 'pending',
-  PROCESSING = 'processing',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled'
-}
-
-export interface Task {
-  id: string;
-  name: string;
-  type: TaskType;
-  status: TaskStatus;
-  progress: number;
-  message: string;
-  created_at: string;
-  updated_at: string;
-  files: string[];
-  target_graph_id?: string;
-  description?: string;
-  result?: any;
-}
-
-export interface CreateTaskRequest {
-  name: string;
-  type?: TaskType;
-  target_graph_id?: string;
-  description?: string;
-  files?: string[];
-}
+// 移除任务相关类型定义，不再使用tasks API
 
 export interface EntityCreateRequest {
   name: string;
@@ -198,19 +162,7 @@ export const apiService = {
   getCategoryDocuments: (categoryId: string): Promise<SourceResource[]> => 
     api.get(`/categories/${categoryId}/documents`),
 
-  // 任务管理API
-  getTasks: (): Promise<Task[]> => 
-    api.get('/tasks'),
-  getTask: (taskId: string): Promise<Task> => 
-    api.get(`/tasks/${taskId}`),
-  createTask: (data: CreateTaskRequest): Promise<Task> => 
-    api.post('/tasks', data),
-  deleteTask: (taskId: string): Promise<{ message: string }> => 
-    api.delete(`/tasks/${taskId}`),
-  cancelTask: (taskId: string): Promise<Task> => 
-    api.post(`/tasks/${taskId}/cancel`),
-  getTaskStatus: (taskId: string): Promise<{ task_id: string; status: string; progress: number; message: string; result?: any }> => 
-    api.get(`/tasks/${taskId}/status`),
+  // 移除任务管理API，不再使用tasks接口
 
   // 实体管理接口
   getEntities: (graphId: string): Promise<Entity[]> => 
