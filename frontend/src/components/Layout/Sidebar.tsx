@@ -29,19 +29,9 @@ const Sidebar: React.FC = () => {
       label: '仪表板',
     },
     {
-      key: 'builder',
+      key: '/builder',
       icon: <BuildOutlined />,
       label: '知识图谱构建',
-      children: [
-        {
-          key: '/tasks',
-          label: '任务管理',
-        },
-        {
-          key: '/builder',
-          label: '实时构建',
-        },
-      ],
     },
     {
       key: 'manager',
