@@ -65,7 +65,7 @@ const GraphBuilder: React.FC = () => {
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
   const [availableGraphs, setAvailableGraphs] = useState<any[]>([]);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
-  const [categoryTree, setCategoryTree] = useState<Category | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [processSteps, setProcessSteps] = useState<ProcessStep[]>([
     {
@@ -169,32 +169,70 @@ const GraphBuilder: React.FC = () => {
     });
   };
 
-  // 构建分类树数据 (暂时禁用)
-  const buildCategoryTreeData = (category: Category | null): any[] => {
-    // 暂时不使用分类树功能
-    return [];
-  };
-
-  // 处理分类选择变化 (暂时禁用分类功能)
-  const handleCategoryChange = async (categoryId: string | null) => {
-    setSelectedCategoryId(categoryId);
-    setSelectedGraphId(null); // 重置图谱选择
+  // 处理图谱选择变化，加载该图谱下的分类
+  const handleGraphChange = async (graphId: string | null) => {
+    setSelectedGraphId(graphId);
+    setSelectedCategoryId(null); // 重置分类选择
+    setAvailableCategories([]); // 清空分类列表
     
-    // 暂时不使用分类功能，直接加载所有图谱
-    try {
-      const graphs = await apiService.getGraphs();
-      setAvailableGraphs(graphs);
-    } catch (error) {
-      console.error('加载图谱失败:', error);
-      message.error('加载图谱失败');
-      setAvailableGraphs([]);
+    if (graphId) {
+      try {
+        const categories = await apiService.getGraphCategories(graphId);
+        setAvailableCategories(categories);
+      } catch (error) {
+        console.error('加载图谱分类失败:', error);
+        message.error('加载图谱分类失败');
+        setAvailableCategories([]);
+      }
     }
   };
 
-  // 加载图谱列表函数 (暂时禁用分类功能)
-  const loadAvailableGraphs = async (categoryId?: string) => {
+  // 处理分类选择变化
+  const handleCategoryChange = (categoryId: string | null) => {
+    setSelectedCategoryId(categoryId);
+  };
+
+  // 构建分类树结构数据
+  const buildCategoryTreeData = (categories: Category[]) => {
+    const categoryMap = new Map<string, Category & { children?: Category[] }>();
+    const rootCategories: (Category & { children?: Category[] })[] = [];
+    
+    // 首先创建所有分类的映射
+    categories.forEach(category => {
+      categoryMap.set(category.id, { ...category, children: [] });
+    });
+    
+    // 构建树结构
+    categories.forEach(category => {
+      const categoryWithChildren = categoryMap.get(category.id)!;
+      
+      if (category.parent_id && category.parent_id !== selectedGraphId && categoryMap.has(category.parent_id)) {
+        // 有父分类且父分类不是图谱ID
+        const parent = categoryMap.get(category.parent_id)!;
+        if (!parent.children) parent.children = [];
+        parent.children.push(categoryWithChildren);
+      } else {
+        // 根分类（parent_id为图谱ID或为空）
+        rootCategories.push(categoryWithChildren);
+      }
+    });
+    
+    // 转换为TreeSelect需要的格式
+    const convertToTreeData = (cats: (Category & { children?: Category[] })[]): any[] => {
+      return cats.map(cat => ({
+        title: `📁 ${cat.name}`,
+        value: cat.id,
+        key: cat.id,
+        children: cat.children && cat.children.length > 0 ? convertToTreeData(cat.children) : undefined
+      }));
+    };
+    
+    return convertToTreeData(rootCategories);
+  };
+
+  // 加载图谱列表函数
+  const loadAvailableGraphs = async () => {
     try {
-      // 暂时不使用分类功能，直接加载所有图谱
       const graphs = await apiService.getGraphs();
       setAvailableGraphs(graphs);
     } catch (error) {
@@ -203,16 +241,15 @@ const GraphBuilder: React.FC = () => {
     }
   };
 
-  // 加载可用图谱列表 (暂时禁用分类树)
+  // 加载可用图谱列表
   useEffect(() => {
     const loadData = async () => {
       try {
-        // 暂时只加载图谱列表，不加载分类树
         const graphs = await apiService.getGraphs();
         setAvailableGraphs(graphs);
-        // setCategoryTree(tree); // 暂时禁用
       } catch (error) {
-        console.error('加载数据失败:', error);
+        console.error('加载图谱列表失败:', error);
+        message.error('加载图谱列表失败');
       }
     };
     
@@ -319,10 +356,6 @@ const GraphBuilder: React.FC = () => {
       setIsProcessing(true);
       setCurrentStep(1);
 
-      // 暂时不使用分类路径
-      // const categoryPath = getCategoryPath(selectedCategoryId, categoryTree);
-      // console.log('🔍 获取到分类路径:', categoryPath);
-
       // 准备批量资源数据
       const resources = [];
       
@@ -341,11 +374,20 @@ const GraphBuilder: React.FC = () => {
       }
       
       // 调用批量资源创建API
+      // 如果选择了分类，使用分类ID作为parent_id，否则使用图谱ID
+      const parentId = selectedCategoryId || selectedGraphId;
       const batchRequest = {
-        parent_id: selectedGraphId,
+        parent_id: parentId,
         graph_id: selectedGraphId,
         resources: resources
       };
+      
+      console.log('📤 批量创建资源请求:', {
+        parent_id: parentId,
+        graph_id: selectedGraphId,
+        category_selected: selectedCategoryId ? '是' : '否',
+        resources_count: resources.length
+      });
       
       const result = await fetch('/api/documents/resources', {
         method: 'POST',
@@ -508,26 +550,13 @@ const GraphBuilder: React.FC = () => {
                 />
                 <Divider />
                 <Form form={form} layout="vertical" style={{ marginBottom: 16 }}>
-                   {/* 暂时禁用分类选择功能 */}
-                   {/* <Form.Item label="选择分类目录">
-                     <TreeSelect
-                       placeholder="选择分类目录来过滤图谱"
-                       allowClear
-                       value={selectedCategoryId}
-                       treeData={buildCategoryTreeData(categoryTree)}
-                       onChange={handleCategoryChange}
-                       showSearch
-                       treeDefaultExpandAll
-                     />
-                   </Form.Item> */}
-                   
                    <Form.Item 
                      label="选择目标图谱"
                      rules={[{ required: true, message: '请选择目标图谱' }]}
                    >
                      <Select 
                        value={selectedGraphId}
-                       onChange={setSelectedGraphId}
+                       onChange={handleGraphChange}
                        placeholder="请选择目标图谱"
                        notFoundContent={availableGraphs.length === 0 ? "暂无数据" : "暂无数据"}
                      >
@@ -538,6 +567,22 @@ const GraphBuilder: React.FC = () => {
                        ))}
                      </Select>
                    </Form.Item>
+                   
+                   {selectedGraphId && availableCategories.length > 0 && (
+                     <Form.Item label="选择分类（可选）">
+                       <TreeSelect
+                         value={selectedCategoryId}
+                         onChange={handleCategoryChange}
+                         placeholder="选择图谱下的分类，不选择则添加到图谱根目录"
+                         allowClear
+                         showSearch
+                         treeDefaultExpandAll
+                         treeData={buildCategoryTreeData(availableCategories)}
+                         notFoundContent="该图谱暂无分类"
+                         style={{ width: '100%' }}
+                       />
+                     </Form.Item>
+                   )}
                  </Form>
                 <Space>
                   <Button 

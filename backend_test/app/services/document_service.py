@@ -95,11 +95,12 @@ def create_batch_resources(
             document_ids.append(source_document.id)
             
         except Exception as e:
+            print(f"处理资源 {resource_item.filename} 时出错: {e}")
              # 添加到失败列表
-             failed_resources.append({
-                 "filename": resource_item.filename,
-                 "error": str(e)
-             })
+            failed_resources.append({
+                "filename": resource_item.filename,
+                "error": str(e)
+            })
     
     # 如果有成功创建的资源，触发批量知识抽取任务
     if document_ids:
