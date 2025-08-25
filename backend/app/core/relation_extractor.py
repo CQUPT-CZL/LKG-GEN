@@ -112,6 +112,7 @@ def _extract_relations_with_llm(entities: List[Dict], text: str) -> List[Dict]:
                     'target_name': tail,
                     'relation_type': relation_type,
                     'description': description,
+                    'confidence': 0.8  # 默认置信度
                 })
             else:
                 print(f"🚫 过滤无效关系: {relation}")
