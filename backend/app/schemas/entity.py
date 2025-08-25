@@ -1,7 +1,7 @@
 # app/schemas/entity.py
 
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 # --- Entity Schemas ---
@@ -84,3 +84,29 @@ class Relation(RelationBase):
     
     class Config:
         from_attributes = True
+
+# 子图查询相关Schema
+class SubgraphEntity(BaseModel):
+    """子图中的实体信息"""
+    id: str
+    name: str
+    entity_type: str
+    description: Optional[str] = None
+    frequency: Optional[int] = 0
+
+class SubgraphRelationship(BaseModel):
+    """子图中的关系信息"""
+    id: int
+    type: str
+    source_id: str
+    target_id: str
+    properties: Optional[Dict] = {}
+
+class EntitySubgraphResponse(BaseModel):
+    """实体子图查询响应"""
+    center_entity: SubgraphEntity
+    entities: List[SubgraphEntity]
+    relationships: List[SubgraphRelationship]
+    hops: int
+    total_entities: int
+    total_relationships: int

@@ -299,3 +299,117 @@ def merge_entities(driver: Driver, source_entity_id: str, target_entity_id: str,
                 return dict(updated_entity["target"])
             else:
                 raise ValueError("更新目标实体失败")
+
+def get_entity_subgraph(driver: Driver, entity_id: str, hops: int = 1) -> Dict[str, Any]:
+    """
+    获取指定实体的x跳子图
+    
+    Args:
+        driver: Neo4j驱动
+        entity_id: 实体ID
+        hops: 跳数，最大为3
+    
+    Returns:
+        包含节点和关系的子图数据
+    """
+    if hops != 1:
+        raise ValueError("目前只支持1跳查询")
+    
+    with driver.session() as session:
+        # 只支持1跳查询
+        query = """
+        MATCH (center:Entity {id: $entity_id})
+        OPTIONAL MATCH (center)-[r]-(connected:Entity)
+        WITH center, collect(DISTINCT connected) as connected_entities, collect(DISTINCT r) as relations
+        RETURN {
+            center_entity: {
+                id: center.id,
+                name: center.name,
+                entity_type: center.entity_type,
+                description: center.description,
+                frequency: center.frequency
+            },
+            entities: [entity in connected_entities | {
+                id: entity.id,
+                name: entity.name,
+                entity_type: entity.entity_type,
+                description: entity.description,
+                frequency: entity.frequency
+            }],
+            relationships: [rel in relations | {
+                id: id(rel),
+                type: COALESCE(rel.relation_type, type(rel)),
+                source_id: startNode(rel).id,
+                target_id: endNode(rel).id,
+                properties: properties(rel)
+            }]
+        } as subgraph
+        """
+        
+        result = session.run(query, entity_id=entity_id)
+        record = result.single()
+        
+        if record:
+            subgraph_data = record["subgraph"]
+            
+            # 处理中心实体的 Neo4j DateTime 类型转换
+            center_entity = subgraph_data.get("center_entity", {})
+            processed_center = {}
+            for key, value in center_entity.items():
+                if hasattr(value, 'iso_format'):  # Neo4j DateTime
+                    processed_center[key] = value.iso_format()
+                elif isinstance(value, list):
+                    processed_center[key] = [item.iso_format() if hasattr(item, 'iso_format') else item for item in value]
+                else:
+                    processed_center[key] = value
+            subgraph_data["center_entity"] = processed_center
+            
+            # 处理实体列表的 Neo4j DateTime 类型转换
+            processed_entities = []
+            for entity in subgraph_data.get("entities", []):
+                processed_entity = {}
+                for key, value in entity.items():
+                    if hasattr(value, 'iso_format'):  # Neo4j DateTime
+                        processed_entity[key] = value.iso_format()
+                    elif isinstance(value, list):
+                        processed_entity[key] = [item.iso_format() if hasattr(item, 'iso_format') else item for item in value]
+                    else:
+                        processed_entity[key] = value
+                processed_entities.append(processed_entity)
+            subgraph_data["entities"] = processed_entities
+            
+            # 处理关系列表的 Neo4j DateTime 类型转换并去重
+            unique_relationships = []
+            seen_rels = set()
+            for rel in subgraph_data.get("relationships", []):
+                # 处理关系属性中的 Neo4j DateTime 类型
+                processed_rel = {}
+                for key, value in rel.items():
+                    if key == "properties" and isinstance(value, dict):
+                        # 处理 properties 字典中的 Neo4j DateTime
+                        processed_properties = {}
+                        for prop_key, prop_value in value.items():
+                            if hasattr(prop_value, 'iso_format'):
+                                processed_properties[prop_key] = prop_value.iso_format()
+                            elif isinstance(prop_value, list):
+                                processed_properties[prop_key] = [item.iso_format() if hasattr(item, 'iso_format') else item for item in prop_value]
+                            else:
+                                processed_properties[prop_key] = prop_value
+                        processed_rel[key] = processed_properties
+                    elif hasattr(value, 'iso_format'):
+                        processed_rel[key] = value.iso_format()
+                    elif isinstance(value, list):
+                        processed_rel[key] = [item.iso_format() if hasattr(item, 'iso_format') else item for item in value]
+                    else:
+                        processed_rel[key] = value
+                
+                # 去重逻辑
+                rel_key = (processed_rel["source_id"], processed_rel["target_id"], processed_rel["type"])
+                if rel_key not in seen_rels:
+                    seen_rels.add(rel_key)
+                    unique_relationships.append(processed_rel)
+            
+            subgraph_data["relationships"] = unique_relationships
+            return subgraph_data
+        else:
+            raise ValueError(f"未找到ID为 {entity_id} 的实体")

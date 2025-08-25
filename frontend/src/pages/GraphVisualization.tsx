@@ -170,6 +170,10 @@ const GraphVisualization: React.FC = () => {
   const [form] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
+  
+  // 实体子图相关状态
+  const [entitySubgraphMode, setEntitySubgraphMode] = useState(false);
+  const [currentEntityId, setCurrentEntityId] = useState<string | null>(null);
 
   // 新增：根据分类列表构建树形结构（支持多级分类）
   const categoryTree: CategoryTreeNode[] = useMemo(() => {
@@ -288,7 +292,6 @@ const GraphVisualization: React.FC = () => {
 
   const loadDocumentSubgraph = async () => {
     if (!selectedDocument) return;
-    
     setLoading(true);
     try {
       const subgraphData = await apiService.getDocumentSubgraph(selectedDocument.id);
@@ -298,6 +301,55 @@ const GraphVisualization: React.FC = () => {
       message.error('加载文档子图谱失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 新增：加载实体子图
+  const loadEntitySubgraph = async (entityId: string) => {
+    setLoading(true);
+    try {
+      const entitySubgraphResponse = await apiService.getEntitySubgraph(entityId, 1);
+      
+      // 将 EntitySubgraphResponse 转换为 Subgraph 格式
+      // 需要将 SubgraphRelationship 转换为 Relationship 格式
+       const convertedRelationships: Relationship[] = entitySubgraphResponse.relationships.map(rel => ({
+          id: rel.id,
+          relation_type: rel.type,
+          source_entity_id: rel.source_id,
+          target_entity_id: rel.target_id,
+          description: rel.properties?.description || '',
+          confidence: rel.properties?.confidence || 1.0,
+          graph_id: selectedGraph?.id || '',
+          properties: rel.properties
+        }));
+      
+      const subgraphData: Subgraph = {
+        entities: [entitySubgraphResponse.center_entity, ...entitySubgraphResponse.entities],
+        relationships: convertedRelationships
+      };
+      
+      setSubgraph(subgraphData);
+      setEntitySubgraphMode(true);
+      setCurrentEntityId(entityId);
+      message.success(`已加载实体 ${entityId} 的子图 (${entitySubgraphResponse.total_entities + 1}个实体，${entitySubgraphResponse.total_relationships}个关系) 🎯`);
+    } catch (error) {
+      console.error('加载实体子图失败:', error);
+      message.error('加载实体子图失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 重置到原始视图
+  const resetToOriginalView = () => {
+    setEntitySubgraphMode(false);
+    setCurrentEntityId(null);
+    if (selectedDocument) {
+      loadDocumentSubgraph();
+    } else if (selectedCategory) {
+      loadCategorySubgraph();
+    } else if (selectedGraph) {
+      loadGraphSubgraph();
     }
   };
 
@@ -369,12 +421,14 @@ const GraphVisualization: React.FC = () => {
 
     const edges: GraphEdge[] = subgraph.relationships.map(rel => {
       const anyRel: any = rel as any;
+      // 现在关系数据已经统一转换为标准格式
       const fromId = (anyRel.source_entity_id ?? anyRel.start_node_id ?? '').toString();
       const toId = (anyRel.target_entity_id ?? anyRel.end_node_id ?? '').toString();
-      const relType = (anyRel.relation_type ?? anyRel.type ?? '') as string;
+      const relType = (anyRel.properties?.relation_type ?? anyRel.relation_type ?? anyRel.type ?? '') as string;
       const description = anyRel.description || '';
       
-      console.log('Edge data:', { id: anyRel.id, relType, description, anyRel });
+      console.log('Edge data:', { id: anyRel.id, fromId, toId, relType, description, anyRel });
+      console.log('Final edge object:', { id: (anyRel.id ?? '').toString(), from: fromId, to: toId, label: relType, type: relType });
       
       const titleText = description ? `关系类型: ${relType}\n描述: ${description}` : `关系类型: ${relType}`;
       
@@ -391,6 +445,7 @@ const GraphVisualization: React.FC = () => {
       } as GraphEdge;
     });
 
+    console.log('Setting network data - edges:', edges.map(e => ({ id: e.id, label: e.label, type: e.type })));
     setNetworkData({ nodes, edges });
     calculateStats(nodes, edges);
   };
@@ -877,9 +932,28 @@ const GraphVisualization: React.FC = () => {
               <Col span={18}>
                 <Card
                   size="small"
-                  title="图谱视图"
+                  title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>图谱视图</span>
+                      {entitySubgraphMode && currentEntityId && (
+                         <Tag color="blue">
+                           🎯 实体子图: {currentEntityId}
+                         </Tag>
+                       )}
+                    </div>
+                  }
                   extra={
                     <Space>
+                      {entitySubgraphMode && (
+                        <Button 
+                          type="default" 
+                          icon={<ReloadOutlined />}
+                          onClick={resetToOriginalView}
+                          size="small"
+                        >
+                          退出子图模式
+                        </Button>
+                      )}
                       <Input.Search
                         placeholder="搜索节点"
                         style={{ width: 200 }}
@@ -1075,6 +1149,28 @@ const GraphVisualization: React.FC = () => {
                     <Tag color={getNodeColor(selectedNode.type)}>{selectedNode.type}</Tag>
                   </Descriptions.Item>
                 </Descriptions>
+                
+                {/* 实体子图操作按钮 */}
+                <div style={{ marginTop: 16, textAlign: 'center' }}>
+                  <Space>
+                    <Button 
+                      type="primary" 
+                      icon={<SearchOutlined />}
+                      onClick={() => loadEntitySubgraph(selectedNode.id)}
+                      loading={loading}
+                    >
+                      查看实体子图
+                    </Button>
+                    {entitySubgraphMode && currentEntityId === selectedNode.id && (
+                      <Button 
+                        icon={<ReloadOutlined />}
+                        onClick={resetToOriginalView}
+                      >
+                        返回原视图
+                      </Button>
+                    )}
+                  </Space>
+                </div>
                 
                 {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
                   <div style={{ marginTop: 16 }}>

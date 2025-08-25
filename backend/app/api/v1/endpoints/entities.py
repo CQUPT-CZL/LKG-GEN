@@ -206,3 +206,60 @@ def merge_entities(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"实体合并失败: {e}")
+
+
+@router.get("/{entity_id}/subgraph", response_model=entity_schemas.EntitySubgraphResponse)
+def get_entity_subgraph(
+    *,
+    driver: Driver = Depends(deps.get_neo4j),
+    entity_id: str,
+    hops: int = 1
+):
+    """
+    获取指定实体的1跳子图
+    
+    Args:
+        entity_id: 实体ID
+        hops: 跳数，目前只支持1，默认为1
+    
+    Returns:
+        包含中心实体、相关实体和关系的子图数据
+    """
+    try:
+        # 验证跳数范围
+        if hops != 1:
+            raise HTTPException(status_code=400, detail="目前只支持1跳查询")
+        
+        # 获取子图数据
+        subgraph_data = crud_entity.get_entity_subgraph(
+            driver=driver,
+            entity_id=entity_id,
+            hops=hops
+        )
+        
+        # 构造响应数据
+        center_entity = entity_schemas.SubgraphEntity(**subgraph_data["center_entity"])
+        
+        entities = [
+            entity_schemas.SubgraphEntity(**entity_data)
+            for entity_data in subgraph_data.get("entities", [])
+        ]
+        
+        relationships = [
+            entity_schemas.SubgraphRelationship(**rel_data)
+            for rel_data in subgraph_data.get("relationships", [])
+        ]
+        
+        return entity_schemas.EntitySubgraphResponse(
+            center_entity=center_entity,
+            entities=entities,
+            relationships=relationships,
+            hops=hops,
+            total_entities=len(entities),
+            total_relationships=len(relationships)
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取实体子图失败: {e}")

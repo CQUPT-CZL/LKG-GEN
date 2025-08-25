@@ -14,7 +14,11 @@ import {
   Modal,
   Form,
   Input,
-  Popconfirm
+  Popconfirm,
+  Drawer,
+  Descriptions,
+  Tag,
+  Spin
 } from 'antd';
 import {
   NodeIndexOutlined,
@@ -22,10 +26,11 @@ import {
   DatabaseOutlined,
   PlusOutlined,
   EditOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  ShareAltOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { apiService, Graph, SourceResource, Entity, EntityCreateRequest } from '../services/api';
+import { apiService, Graph, SourceResource, Entity, EntityCreateRequest, Subgraph, Relationship } from '../services/api';
 
 const { Title, Paragraph } = Typography;
 const { Option } = Select;
@@ -41,6 +46,12 @@ const EntityManager: React.FC = () => {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
   const [form] = Form.useForm();
+  
+  // 实体子图相关状态
+  const [subgraphDrawerVisible, setSubgraphDrawerVisible] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+  const [entitySubgraph, setEntitySubgraph] = useState<Subgraph | null>(null);
+  const [subgraphLoading, setSubgraphLoading] = useState(false);
 
   useEffect(() => {
     loadGraphs();
@@ -129,9 +140,42 @@ const EntityManager: React.FC = () => {
     }
   };
 
-  const handleView = (record: Entity) => {
-    message.info(`查看实体: ${record.name}`);
-    // 这里可以实现实体详情查看功能
+  const handleView = async (record: Entity) => {
+    setSelectedEntity(record);
+    setSubgraphDrawerVisible(true);
+    await loadEntitySubgraph(record.id);
+  };
+
+  const loadEntitySubgraph = async (entityId: string) => {
+    setSubgraphLoading(true);
+    try {
+      const entitySubgraphResponse = await apiService.getEntitySubgraph(entityId, 1);
+      
+      // 将 EntitySubgraphResponse 转换为 Subgraph 格式
+      // 需要将 SubgraphRelationship 转换为 Relationship 格式
+       const convertedRelationships = entitySubgraphResponse.relationships.map(rel => ({
+          id: rel.id,
+          relation_type: rel.type,
+          source_entity_id: rel.source_id,
+          target_entity_id: rel.target_id,
+          description: rel.properties?.description || '',
+          confidence: rel.properties?.confidence || 1.0,
+          graph_id: selectedGraphId || '',
+          properties: rel.properties
+        }));
+      
+      const subgraphData = {
+        entities: [...entitySubgraphResponse.entities, entitySubgraphResponse.center_entity],
+        relationships: convertedRelationships
+      };
+      
+      setEntitySubgraph(subgraphData);
+    } catch (error) {
+      console.error('加载实体子图失败:', error);
+      message.error('加载实体子图失败');
+    } finally {
+      setSubgraphLoading(false);
+    }
   };
 
   const handleCreate = () => {
@@ -227,7 +271,7 @@ const EntityManager: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 250,
+      width: 320,
       fixed: 'right',
       render: (_, record) => (
         <Space size="middle">
@@ -236,7 +280,14 @@ const EntityManager: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => handleView(record)}
           >
-            查看
+            详情
+          </Button>
+          <Button
+            type="link"
+            icon={<ShareAltOutlined />}
+            onClick={() => handleView(record)}
+          >
+            子图
           </Button>
           <Button
             type="link"
@@ -437,6 +488,123 @@ const EntityManager: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 实体子图抽屉 */}
+      <Drawer
+        title={selectedEntity ? `🕸️ ${selectedEntity.name} - 实体子图` : '实体子图'}
+        placement="right"
+        onClose={() => {
+          setSubgraphDrawerVisible(false);
+          setSelectedEntity(null);
+          setEntitySubgraph(null);
+        }}
+        open={subgraphDrawerVisible}
+        width={600}
+      >
+        {selectedEntity && (
+          <div>
+            {/* 实体基本信息 */}
+            <Card size="small" title="📋 实体信息" style={{ marginBottom: 16 }}>
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="名称">{selectedEntity.name}</Descriptions.Item>
+                <Descriptions.Item label="类型">
+                  <Tag color="blue">{selectedEntity.entity_type}</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="ID">
+                  <code>{selectedEntity.id}</code>
+                </Descriptions.Item>
+                {selectedEntity.properties?.description && (
+                  <Descriptions.Item label="描述">
+                    {selectedEntity.properties.description}
+                  </Descriptions.Item>
+                )}
+              </Descriptions>
+            </Card>
+
+            {/* 子图信息 */}
+            <Card size="small" title="🔗 关联子图" style={{ marginBottom: 16 }}>
+              {subgraphLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}>
+                  <Spin size="large" />
+                  <div style={{ marginTop: 8 }}>加载子图数据中...</div>
+                </div>
+              ) : entitySubgraph ? (
+                <div>
+                  <Row gutter={16} style={{ marginBottom: 16 }}>
+                    <Col span={12}>
+                      <Statistic
+                        title="关联实体数"
+                        value={entitySubgraph.entities.length}
+                        prefix={<NodeIndexOutlined style={{ color: '#1890ff' }} />}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <Statistic
+                        title="关系数"
+                        value={entitySubgraph.relationships.length}
+                        prefix={<ShareAltOutlined style={{ color: '#52c41a' }} />}
+                      />
+                    </Col>
+                  </Row>
+
+                  {/* 关联实体列表 */}
+                  {entitySubgraph.entities.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <Typography.Text strong>🎯 关联实体:</Typography.Text>
+                      <div style={{ marginTop: 8 }}>
+                        {entitySubgraph.entities.map(entity => (
+                          <Tag
+                            key={entity.id}
+                            color="blue"
+                            style={{ margin: '2px' }}
+                          >
+                            {entity.name} ({entity.entity_type})
+                          </Tag>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 关系列表 */}
+                  {entitySubgraph.relationships.length > 0 && (
+                    <div>
+                      <Typography.Text strong>🔗 关系列表:</Typography.Text>
+                      <div style={{ marginTop: 8 }}>
+                        {entitySubgraph.relationships.map(rel => (
+                          <div
+                            key={rel.id}
+                            style={{
+                              padding: '8px',
+                              border: '1px solid #d9d9d9',
+                              borderRadius: '4px',
+                              marginBottom: '8px',
+                              backgroundColor: '#fafafa'
+                            }}
+                          >
+                            <div>
+                               <Tag color="green">{rel.relation_type}</Tag>
+                               <Typography.Text code style={{ fontSize: '12px' }}>
+                                 {rel.source_entity_id} → {rel.target_entity_id}
+                               </Typography.Text>
+                             </div>
+                            {rel.properties && Object.keys(rel.properties).length > 0 && (
+                              <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
+                                属性: {JSON.stringify(rel.properties, null, 2)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Empty description="暂无子图数据" />
+              )}
+            </Card>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };

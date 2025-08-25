@@ -79,6 +79,24 @@ export interface Subgraph {
   relationships: Relationship[];
 }
 
+// 实体子图中的关系接口（后端返回的字段名称与总图谱不同）
+export interface SubgraphRelationship {
+  id: string;
+  type: string;
+  source_id: string;
+  target_id: string;
+  properties?: Record<string, any>;
+}
+
+export interface EntitySubgraphResponse {
+  center_entity: Entity;
+  entities: Entity[];
+  relationships: SubgraphRelationship[];
+  hops: number;
+  total_entities: number;
+  total_relationships: number;
+}
+
 export interface BatchResourceRequest {
   parent_id: string;
   graph_id: string;
@@ -218,6 +236,8 @@ export const apiService = {
     api.delete(`/entities/${entityId}`),
   mergeEntities: (data: EntityMergeRequest): Promise<EntityMergeResponse> => 
     api.post('/entities/merge', data),
+  getEntitySubgraph: (entityId: string, hops: number = 1): Promise<EntitySubgraphResponse> => 
+    api.get(`/entities/${entityId}/subgraph?hops=${hops}`),
 
   // 关系管理接口
   getRelations: (graphId: string): Promise<Relationship[]> => 
