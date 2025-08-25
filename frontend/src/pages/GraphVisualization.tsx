@@ -22,6 +22,7 @@ import {
 } from 'antd';
 import {
   FullscreenOutlined,
+  FullscreenExitOutlined,
   DownloadOutlined,
   SettingOutlined,
   SearchOutlined,
@@ -174,6 +175,9 @@ const GraphVisualization: React.FC = () => {
   // 实体子图相关状态
   const [entitySubgraphMode, setEntitySubgraphMode] = useState(false);
   const [currentEntityId, setCurrentEntityId] = useState<string | null>(null);
+  
+  // 全屏状态
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // 新增：根据分类列表构建树形结构（支持多级分类）
   const categoryTree: CategoryTreeNode[] = useMemo(() => {
@@ -697,6 +701,12 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
+  const handleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+
+
   // 实体合并相关函数
   const handleMergeMode = (enabled: boolean) => {
     setMergeMode(enabled);
@@ -857,79 +867,90 @@ const GraphVisualization: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ 
+      padding: isFullscreen ? '0' : '24px',
+      position: isFullscreen ? 'fixed' : 'relative',
+      top: isFullscreen ? 0 : 'auto',
+      left: isFullscreen ? 0 : 'auto',
+      width: isFullscreen ? '100vw' : 'auto',
+      height: isFullscreen ? '100vh' : 'auto',
+      zIndex: isFullscreen ? 9999 : 'auto',
+      backgroundColor: isFullscreen ? '#fff' : 'transparent'
+    }}>
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card
-            title={<Title level={3}>🔍 图谱可视化</Title>}
+            title={!isFullscreen ? <Title level={3}>🔍 图谱可视化</Title> : null}
             extra={
-              <Space>
-                <Select
-                  placeholder="选择图谱"
-                  style={{ width: 200 }}
-                  value={selectedGraph?.id}
-                  onChange={(value) => {
-                    const graph = graphs.find(g => g.id === value);
-                    setSelectedGraph(graph || null);
-                    setSelectedDocument(null);
-                    setSubgraph(null);
-                  }}
-                >
-                  {graphs.map(graph => (
-                    <Option key={graph.id} value={graph.id}>
-                      {graph.name}
-                    </Option>
-                  ))}
-                </Select>
-                {selectedGraph && (
-                  <TreeSelect
-                    allowClear
-                    placeholder="选择分类（可选，支持多级）"
-                    style={{ width: 260 }}
-                    dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
-                    treeData={categoryTree as any}
-                    value={selectedCategory?.id}
-                    treeDefaultExpandAll
+              !isFullscreen ? (
+                <Space>
+                  <Select
+                    placeholder="选择图谱"
+                    style={{ width: 200 }}
+                    value={selectedGraph?.id}
                     onChange={(value) => {
-                      const cat = categories.find(c => c.id === value) || null;
-                      setSelectedCategory(cat);
+                      const graph = graphs.find(g => g.id === value);
+                      setSelectedGraph(graph || null);
                       setSelectedDocument(null);
+                      setSubgraph(null);
                     }}
-                    onClear={() => {
-                      setSelectedCategory(null);
-                      setSelectedDocument(null);
-                    }}
-                  />
-                )}
-                 {selectedGraph && (
-                   <Select
-                     placeholder="选择文档"
-                     style={{ width: 200 }}
-                     value={selectedDocument?.id}
-                     onChange={(value) => {
-                       const doc = documents.find(d => d.id === value);
-                       setSelectedDocument(doc || null);
-                     }}
-                   >
-                     {documents.map(doc => (
-                       <Option key={doc.id} value={doc.id}>
-                         {doc.filename}
-                       </Option>
-                     ))}
-                   </Select>
-                 )}
+                  >
+                    {graphs.map(graph => (
+                      <Option key={graph.id} value={graph.id}>
+                        {graph.name}
+                      </Option>
+                    ))}
+                  </Select>
+                  {selectedGraph && (
+                    <TreeSelect
+                      allowClear
+                      placeholder="选择分类（可选，支持多级）"
+                      style={{ width: 260 }}
+                      dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
+                      treeData={categoryTree as any}
+                      value={selectedCategory?.id}
+                      treeDefaultExpandAll
+                      onChange={(value) => {
+                        const cat = categories.find(c => c.id === value) || null;
+                        setSelectedCategory(cat);
+                        setSelectedDocument(null);
+                      }}
+                      onClear={() => {
+                        setSelectedCategory(null);
+                        setSelectedDocument(null);
+                      }}
+                    />
+                  )}
+                   {selectedGraph && (
+                     <Select
+                       placeholder="选择文档"
+                       style={{ width: 200 }}
+                       value={selectedDocument?.id}
+                       onChange={(value) => {
+                         const doc = documents.find(d => d.id === value);
+                         setSelectedDocument(doc || null);
+                       }}
+                     >
+                       {documents.map(doc => (
+                         <Option key={doc.id} value={doc.id}>
+                           {doc.filename}
+                         </Option>
+                       ))}
+                     </Select>
+                   )}
 
-                {selectedGraph && !selectedCategory && (
-                  <Button type="primary" onClick={loadGraphSubgraph} icon={<SearchOutlined />}>加载图谱子图谱</Button>
-                )}
-                {selectedGraph && selectedCategory && (
-                  <Button type="primary" onClick={loadCategorySubgraph} icon={<SearchOutlined />}>加载分类子图谱</Button>
-                )}
-              </Space>
+                  {selectedGraph && !selectedCategory && (
+                    <Button type="primary" onClick={loadGraphSubgraph} icon={<SearchOutlined />}>加载图谱子图谱</Button>
+                  )}
+                  {selectedGraph && selectedCategory && (
+                    <Button type="primary" onClick={loadCategorySubgraph} icon={<SearchOutlined />}>加载分类子图谱</Button>
+                  )}
+                </Space>
+              ) : null
             }
           >
             <Row gutter={[16, 16]}>
-              <Col span={18}>
+              <Col span={isFullscreen ? 24 : 18}>
                 <Card
                   size="small"
                   title={
@@ -966,6 +987,12 @@ const GraphVisualization: React.FC = () => {
                       <Tooltip title="缩小">
                         <Button icon={<ZoomOutOutlined />} onClick={handleZoomOut} />
                       </Tooltip>
+                      <Tooltip title={isFullscreen ? "退出全屏" : "全屏显示"}>
+                        <Button 
+                          icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} 
+                          onClick={handleFullscreen} 
+                        />
+                      </Tooltip>
                       <Tooltip title="重置视图">
                         <Button icon={<ReloadOutlined />} onClick={handleReset} />
                       </Tooltip>
@@ -991,7 +1018,7 @@ const GraphVisualization: React.FC = () => {
                       ref={networkRef}
                       style={{
                         width: '100%',
-                        height: '600px',
+                        height: isFullscreen ? 'calc(100vh - 80px)' : '600px',
                         border: '1px solid #d9d9d9',
                         borderRadius: '6px'
                       }}
@@ -1000,7 +1027,8 @@ const GraphVisualization: React.FC = () => {
                 </Card>
               </Col>
               
-              <Col span={6}>
+              {!isFullscreen && (
+                <Col span={6}>
                 <Card size="small" title="图谱统计">
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="节点数量">
@@ -1090,7 +1118,8 @@ const GraphVisualization: React.FC = () => {
                     </Space>
                   </div>
                 </Card>
-              </Col>
+                </Col>
+              )}
             </Row>
           </Card>
         </Col>
