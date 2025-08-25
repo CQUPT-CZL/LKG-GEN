@@ -27,6 +27,8 @@ import {
   LoadingOutlined
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { apiService, SourceResource } from '../services/api';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -488,24 +490,17 @@ const DocumentManager: React.FC = () => {
                 key: 'content',
                 label: '文档内容',
                 children: (
-                  <div style={{ maxHeight: '500px', overflow: 'auto' }}>
-                    {contentLoading ? (
-                      <div style={{ textAlign: 'center', padding: '50px' }}>
-                        <Spin size="large" />
-                        <div style={{ marginTop: '16px' }}>加载文档内容中...</div>
-                      </div>
-                    ) : (
-                      <div style={{ padding: '16px', backgroundColor: '#fafafa', borderRadius: '6px' }}>
-                        {selectedDocument.filename.toLowerCase().endsWith('.md') ? (
-                          <ReactMarkdown>{documentContent}</ReactMarkdown>
-                        ) : (
-                          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-                            {documentContent}
-                          </pre>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  contentLoading ? (
+                    <Spin tip="正在加载文档内容...">
+                      <div style={{ height: 400, width: '100%' }} />
+                    </Spin>
+                  ) : (
+                    <div style={{ maxHeight: 400, overflowY: 'auto', padding: '8px', border: '1px solid #f0f0f0', borderRadius: '4px' }}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                        {documentContent}
+                      </ReactMarkdown>
+                    </div>
+                  )
                 )
               }
             ]}
