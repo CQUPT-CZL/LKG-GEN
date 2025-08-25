@@ -27,6 +27,18 @@ backend/data/
 backend/temp/
 backend/uploads/
 
+# Configuration files (user-specific, should not be committed)
+backend/app/kg_config.json
+kg_config.json
+
+# Database files (user data, should not be committed)
+*.db
+*.sqlite
+*.sqlite3
+kg_platform.db
+backend/kg_platform.db
+backend_test/kg_platform.db
+
 # Data directories
 src/scripts/__pycache__/
 src/data/*
@@ -75,12 +87,17 @@ frontend_test.txt
 *.swo
 *~
 
-# Environment
+# Environment files (contain sensitive information)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+backend/.env
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
 
 # Lock files (optional, depends on team preference)
 # uv.lock
