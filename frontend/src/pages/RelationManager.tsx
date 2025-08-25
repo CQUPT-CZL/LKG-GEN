@@ -210,19 +210,6 @@ const RelationManager: React.FC = () => {
 
   const columns: ColumnsType<Relationship> = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 200,
-      ellipsis: true
-    },
-    {
-      title: '关系类型',
-      dataIndex: 'relation_type',
-      key: 'relation_type',
-      ellipsis: true
-    },
-    {
       title: '起始节点',
       dataIndex: 'source_entity_id',
       key: 'source_entity_id',
@@ -232,13 +219,23 @@ const RelationManager: React.FC = () => {
       )
     },
     {
-      title: '关系方向',
-      key: 'direction',
-      width: 80,
-      align: 'center',
-      render: () => (
-        <ArrowRightOutlined style={{ color: '#52c41a', fontSize: '16px' }} />
-      )
+      title: '关系类型',
+      dataIndex: 'relation_type',
+      key: 'relation_type',
+      ellipsis: true,
+      render: (text: string) => (
+         <span style={{ 
+           backgroundColor: '#f0f0f0',
+           color: '#666',
+           padding: '4px 8px',
+           borderRadius: '4px',
+           fontSize: '12px',
+           fontWeight: '500',
+           display: 'inline-block'
+         }}>
+           {text}
+         </span>
+       )
     },
     {
       title: '结束节点',
@@ -263,6 +260,13 @@ const RelationManager: React.FC = () => {
         }
         return properties.length > 0 ? properties.join('; ') : '无属性';
       }
+    },
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 200,
+      ellipsis: true
     },
     {
       title: '操作',

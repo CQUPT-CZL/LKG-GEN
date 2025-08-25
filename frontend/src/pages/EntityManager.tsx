@@ -199,13 +199,6 @@ const EntityManager: React.FC = () => {
 
   const columns: ColumnsType<Entity> = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 200,
-      ellipsis: true
-    },
-    {
       title: '实体名称',
       dataIndex: 'name',
       key: 'name',
@@ -223,6 +216,13 @@ const EntityManager: React.FC = () => {
       key: 'description',
       ellipsis: true,
       render: (text: string) => text || '暂无描述'
+    },
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 200,
+      ellipsis: true
     },
     {
       title: '操作',
