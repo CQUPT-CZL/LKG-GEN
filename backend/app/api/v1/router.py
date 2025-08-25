@@ -1,7 +1,7 @@
 # app/api/v1/router.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import documents, graphs, categories, entities, relations
+from app.api.v1.endpoints import documents, graphs, categories, entities, relations, config
 
 # 创建v1版本的主路由
 api_router = APIRouter()
@@ -35,4 +35,10 @@ api_router.include_router(
     relations.router,
     prefix="/relations",
     tags=["relations"]
+)
+
+api_router.include_router(
+    config.router,
+    prefix="/config",
+    tags=["config"]
 )

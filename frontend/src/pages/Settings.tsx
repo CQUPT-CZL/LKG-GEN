@@ -20,7 +20,9 @@ import {
   Popconfirm,
   InputNumber,
   Radio,
-  Tabs
+  Tabs,
+  List,
+  Tooltip
 } from 'antd';
 import {
   SettingOutlined,
@@ -30,10 +32,13 @@ import {
   DownloadOutlined,
   DeleteOutlined,
   PlusOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  EditOutlined,
+  NodeIndexOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { apiService, KnowledgeGraphConfig } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -84,6 +89,8 @@ interface ApiKey {
 const Settings: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [kgConfigs, setKgConfigs] = useState<KnowledgeGraphConfig[]>([]);
+  const [selectedKgConfig, setSelectedKgConfig] = useState<string | null>(null);
   const [config, setConfig] = useState<SystemConfig>({
     general: {
       systemName: 'LKG-GEN 知识图谱生成系统',
@@ -138,7 +145,96 @@ const Settings: React.FC = () => {
   const [isApiKeyModalVisible, setIsApiKeyModalVisible] = useState(false);
   const [editingApiKey, setEditingApiKey] = useState<ApiKey | null>(null);
   const [apiKeyForm] = Form.useForm();
+  
+  // 知识图谱配置相关状态
+  const [kgConfig, setKgConfig] = useState<KnowledgeGraphConfig>({
+    entity_types: [],
+    relation_types: []
+  });
+  const [isKgConfigModalVisible, setIsKgConfigModalVisible] = useState(false);
+  const [editingEntityType, setEditingEntityType] = useState<string | null>(null);
+  const [editingRelationType, setEditingRelationType] = useState<string | null>(null);
+  const [newEntityType, setNewEntityType] = useState('');
+  const [newRelationType, setNewRelationType] = useState('');
+  const [kgConfigForm] = Form.useForm();
 
+  useEffect(() => {
+    form.setFieldsValue(config);
+    loadKnowledgeGraphConfig();
+  }, []);
+  
+  // 加载知识图谱配置
+  const loadKnowledgeGraphConfig = async () => {
+    try {
+      const config = await apiService.getKnowledgeGraphConfig();
+      setKgConfig(config);
+    } catch (error) {
+      console.error('加载知识图谱配置失败:', error);
+      message.error('加载知识图谱配置失败');
+    }
+  };
+  
+  // 保存知识图谱配置
+  const saveKnowledgeGraphConfig = async () => {
+    try {
+      await apiService.updateKnowledgeGraphConfig(kgConfig);
+      message.success('知识图谱配置保存成功');
+    } catch (error) {
+      console.error('保存知识图谱配置失败:', error);
+      message.error('保存知识图谱配置失败');
+    }
+  };
+  
+  // 重置知识图谱配置为默认值
+  const resetKnowledgeGraphConfig = async () => {
+    try {
+      await apiService.resetConfigToDefaults();
+      await loadKnowledgeGraphConfig();
+      message.success('知识图谱配置已重置为默认值');
+    } catch (error) {
+      console.error('重置知识图谱配置失败:', error);
+      message.error('重置知识图谱配置失败');
+    }
+  };
+  
+  // 添加实体类型
+  const handleAddEntityType = () => {
+    if (newEntityType.trim() && !kgConfig.entity_types.includes(newEntityType.trim())) {
+      setKgConfig({
+        ...kgConfig,
+        entity_types: [...kgConfig.entity_types, newEntityType.trim()]
+      });
+      setNewEntityType('');
+    }
+  };
+  
+  // 删除实体类型
+  const handleDeleteEntityType = (type: string) => {
+    setKgConfig({
+      ...kgConfig,
+      entity_types: kgConfig.entity_types.filter(t => t !== type)
+    });
+  };
+  
+  // 添加关系类型
+  const handleAddRelationType = () => {
+    if (newRelationType.trim() && !kgConfig.relation_types.includes(newRelationType.trim())) {
+      setKgConfig({
+        ...kgConfig,
+        relation_types: [...kgConfig.relation_types, newRelationType.trim()]
+      });
+      setNewRelationType('');
+    }
+  };
+  
+  // 删除关系类型
+  const handleDeleteRelationType = (type: string) => {
+    setKgConfig({
+      ...kgConfig,
+      relation_types: kgConfig.relation_types.filter(t => t !== type)
+    });
+  };
+  
   useEffect(() => {
     form.setFieldsValue(config);
   }, [config, form]);
@@ -598,6 +694,114 @@ const Settings: React.FC = () => {
                   </Form.Item>
                 </Col>
               </Row>
+            </Card>
+          </TabPane>
+
+          {/* 知识图谱配置 */}
+          <TabPane tab={<span><NodeIndexOutlined /> 知识图谱配置</span>} key="knowledge-graph">
+            <Card title="实体类型配置">
+              <div style={{ marginBottom: 16 }}>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input
+                    placeholder="输入新的实体类型"
+                    value={newEntityType}
+                    onChange={(e) => setNewEntityType(e.target.value)}
+                    onPressEnter={handleAddEntityType}
+                  />
+                  <Button type="primary" onClick={handleAddEntityType}>
+                    添加
+                  </Button>
+                </Space.Compact>
+              </div>
+              <List
+                size="small"
+                bordered
+                dataSource={kgConfig.entity_types}
+                renderItem={(item) => (
+                  <List.Item
+                    actions={[
+                      <Popconfirm
+                        title="确定要删除这个实体类型吗？"
+                        onConfirm={() => handleDeleteEntityType(item)}
+                        okText="确定"
+                        cancelText="取消"
+                      >
+                        <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    ]}
+                  >
+                    <Tag color="blue">{item}</Tag>
+                  </List.Item>
+                )}
+                locale={{ emptyText: '暂无实体类型' }}
+              />
+            </Card>
+
+            <Card title="关系类型配置" style={{ marginTop: 16 }}>
+              <div style={{ marginBottom: 16 }}>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input
+                    placeholder="输入新的关系类型"
+                    value={newRelationType}
+                    onChange={(e) => setNewRelationType(e.target.value)}
+                    onPressEnter={handleAddRelationType}
+                  />
+                  <Button type="primary" onClick={handleAddRelationType}>
+                    添加
+                  </Button>
+                </Space.Compact>
+              </div>
+              <List
+                size="small"
+                bordered
+                dataSource={kgConfig.relation_types}
+                renderItem={(item) => (
+                  <List.Item
+                    actions={[
+                      <Popconfirm
+                        title="确定要删除这个关系类型吗？"
+                        onConfirm={() => handleDeleteRelationType(item)}
+                        okText="确定"
+                        cancelText="取消"
+                      >
+                        <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    ]}
+                  >
+                    <Tag color="green">{item}</Tag>
+                  </List.Item>
+                )}
+                locale={{ emptyText: '暂无关系类型' }}
+              />
+            </Card>
+
+            <Card title="配置操作" style={{ marginTop: 16 }}>
+              <Space>
+                <Button 
+                  type="primary" 
+                  icon={<SaveOutlined />}
+                  onClick={saveKnowledgeGraphConfig}
+                >
+                  保存配置
+                </Button>
+                <Popconfirm
+                  title="确定要重置为默认配置吗？这将清除所有自定义配置。"
+                  onConfirm={resetKnowledgeGraphConfig}
+                  okText="确定"
+                  cancelText="取消"
+                >
+                  <Button icon={<ReloadOutlined />}>
+                    重置为默认
+                  </Button>
+                </Popconfirm>
+              </Space>
+              <Paragraph style={{ marginTop: 16, color: '#666' }}>
+                <Text type="secondary">
+                  💡 提示：实体类型用于标识知识图谱中的节点类型（如人物、地点、组织等），
+                  关系类型用于标识节点之间的连接关系（如属于、位于、合作等）。
+                  修改配置后请点击"保存配置"按钮使更改生效。
+                </Text>
+              </Paragraph>
             </Card>
           </TabPane>
         </Tabs>

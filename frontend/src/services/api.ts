@@ -115,6 +115,20 @@ export interface RelationCreateRequest {
   graph_id: string;
 }
 
+// 配置管理相关类型定义
+export interface KnowledgeGraphConfig {
+  entity_types: string[];
+  relation_types: string[];
+}
+
+export interface EntityTypesConfig {
+  entity_types: string[];
+}
+
+export interface RelationTypesConfig {
+  relation_types: string[];
+}
+
 
 
 // API方法
@@ -134,6 +148,22 @@ export const apiService = {
   // 知识图谱管理
   getGraphs: (skip = 0, limit = 100): Promise<Graph[]> => 
     api.get(`/graphs/?skip=${skip}&limit=${limit}`),
+  
+  // 配置管理
+  getKnowledgeGraphConfig: (): Promise<KnowledgeGraphConfig> =>
+    api.get('/config/knowledge-graph'),
+  updateKnowledgeGraphConfig: (config: KnowledgeGraphConfig): Promise<{ message: string }> =>
+    api.put('/config/knowledge-graph', config),
+  getEntityTypes: (): Promise<EntityTypesConfig> =>
+    api.get('/config/entity-types'),
+  updateEntityTypes: (config: EntityTypesConfig): Promise<{ message: string }> =>
+    api.put('/config/entity-types', config),
+  getRelationTypes: (): Promise<RelationTypesConfig> =>
+    api.get('/config/relation-types'),
+  updateRelationTypes: (config: RelationTypesConfig): Promise<{ message: string }> =>
+    api.put('/config/relation-types', config),
+  resetConfigToDefaults: (): Promise<{ message: string }> =>
+    api.post('/config/reset-defaults'),
   getGraph: (graphId: string): Promise<Graph> => 
     api.get(`/graphs/${graphId}`),
   // 新增：获取图谱下的分类列表
