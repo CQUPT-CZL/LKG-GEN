@@ -79,6 +79,7 @@ def get_category(
 def delete_category(
     *,
     driver: Driver = Depends(deps.get_neo4j),
+    db: Session = Depends(deps.get_db),
     category_id: str
 ):
     """
@@ -90,8 +91,12 @@ def delete_category(
         if not category:
             raise HTTPException(status_code=404, detail="分类不存在")
         
-        # 这里可以添加删除分类的逻辑
-        # 暂时返回成功消息
+        # 删除分类及其所有子分类和相关资源
+        success = crud_graph.delete_category(driver=driver, category_id=category_id, db_session=db)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="删除分类失败")
+        
         return {"message": "分类删除成功"}
     except HTTPException:
         raise

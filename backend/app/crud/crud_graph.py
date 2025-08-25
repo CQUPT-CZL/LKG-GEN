@@ -768,3 +768,48 @@ def get_document_ids_by_category(driver: Driver, category_id: str) -> list[int]:
             return []
         doc_ids = record.get("doc_ids") or []
         return [int(i) for i in doc_ids if i is not None]
+
+
+def delete_category(driver: Driver, category_id: str, db_session=None) -> bool:
+    """删除分类及其所有子分类和相关资源"""
+    from app.crud import crud_sqlite
+    
+    with driver.session() as session:
+        # 1. 首先获取该分类下的所有文档ID，用于后续清理
+        get_docs_query = """
+        MATCH (c:Category {id: $category_id})
+        OPTIONAL MATCH (c)-[:HAS_CHILD*0..]->(parent)-[:CONTAINS_RESOURCE]->(d:Document)
+        RETURN collect(DISTINCT d.source_document_id) AS doc_ids
+        """
+        docs_result = session.run(get_docs_query, category_id=category_id)
+        docs_record = docs_result.single()
+        doc_ids = docs_record["doc_ids"] if docs_record else []
+        
+        # 2. 对每个文档进行完整的删除逻辑（实体清理 + Neo4j文档节点删除 + SQLite文档删除）
+        for doc_id in doc_ids:
+            if doc_id is not None:
+                doc_id_int = int(doc_id)
+                
+                # 2.1 清理该文档相关的实体
+                cleanup_entities_for_document(driver, doc_id_int)
+                
+                # 2.2 删除Neo4j中的文档节点
+                delete_document_node(driver, doc_id_int)
+                
+                # 2.3 删除SQLite中的文档记录（如果提供了数据库会话）
+                if db_session:
+                    crud_sqlite.delete_source_document(db_session, doc_id_int)
+        
+        # 3. 删除分类及其所有子分类节点（此时文档节点已经被删除）
+        delete_query = """
+        // 找到要删除的分类节点
+        MATCH (c:Category {id: $category_id})
+        // 找到该分类下的所有子分类（递归查找）
+        OPTIONAL MATCH (c)-[:HAS_CHILD*0..]->(child:Category)
+        // 删除所有相关分类节点和关系
+        DETACH DELETE c, child
+        RETURN count(c) as deleted_count
+        """
+        result = session.run(delete_query, category_id=category_id)
+        record = result.single()
+        return record["deleted_count"] > 0 if record else False
