@@ -123,8 +123,8 @@ def update_entity(
             description=updated_entity.get("description", ""),
             graph_id=updated_entity.get("graph_id"),
             frequency=updated_entity.get("frequency", 0),
-            created_at=updated_entity.get("created_at"),
-            updated_at=updated_entity.get("updated_at"),
+            created_at=convert_neo4j_datetime(updated_entity.get("created_at")),
+            updated_at=convert_neo4j_datetime(updated_entity.get("updated_at")),
             chunk_ids=updated_entity.get("chunk_ids", [])
         )
     except HTTPException:
@@ -151,3 +151,58 @@ def delete_entity(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除实体失败: {e}")
+
+
+@router.post("/merge", response_model=entity_schemas.EntityMergeResponse)
+def merge_entities(
+    *,
+    driver: Driver = Depends(deps.get_neo4j),
+    merge_request: entity_schemas.EntityMergeRequest
+):
+    """
+    合并两个实体
+    将源实体合并到目标实体，包括：
+    - 合并chunk_ids和document_ids
+    - 转移所有关系到目标实体
+    - 合并频次
+    - 删除源实体
+    """
+    try:
+        # 验证两个实体不能相同
+        if merge_request.source_entity_id == merge_request.target_entity_id:
+            raise HTTPException(status_code=400, detail="源实体和目标实体不能相同")
+        
+        # 执行合并操作
+        merged_entity_data = crud_entity.merge_entities(
+            driver=driver,
+            source_entity_id=merge_request.source_entity_id,
+            target_entity_id=merge_request.target_entity_id,
+            merged_name=merge_request.merged_name,
+            merged_description=merge_request.merged_description
+        )
+        
+        # 构造返回的实体对象
+        merged_entity = entity_schemas.Entity(
+            id=merged_entity_data["id"],
+            name=merged_entity_data["name"],
+            entity_type=merged_entity_data.get("entity_type", ""),
+            description=merged_entity_data.get("description", ""),
+            graph_id=merged_entity_data.get("graph_id"),
+            frequency=merged_entity_data.get("frequency", 0),
+            created_at=convert_neo4j_datetime(merged_entity_data.get("created_at")),
+            updated_at=convert_neo4j_datetime(merged_entity_data.get("updated_at")),
+            chunk_ids=merged_entity_data.get("chunk_ids", [])
+        )
+        
+        return entity_schemas.EntityMergeResponse(
+            success=True,
+            message=f"实体合并成功，源实体 {merge_request.source_entity_id} 已合并到目标实体 {merge_request.target_entity_id}",
+            merged_entity=merged_entity
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"实体合并失败: {e}")

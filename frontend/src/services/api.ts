@@ -129,6 +129,19 @@ export interface RelationTypesConfig {
   relation_types: string[];
 }
 
+export interface EntityMergeRequest {
+  source_entity_id: string;
+  target_entity_id: string;
+  merged_name?: string;
+  merged_description?: string;
+}
+
+export interface EntityMergeResponse {
+  success: boolean;
+  message: string;
+  merged_entity?: Entity;
+}
+
 
 
 // API方法
@@ -203,6 +216,8 @@ export const apiService = {
     api.put(`/entities/${entityId}`, data),
   deleteEntity: (entityId: string): Promise<{ message: string }> => 
     api.delete(`/entities/${entityId}`),
+  mergeEntities: (data: EntityMergeRequest): Promise<EntityMergeResponse> => 
+    api.post('/entities/merge', data),
 
   // 关系管理接口
   getRelations: (graphId: string): Promise<Relationship[]> => 

@@ -17,7 +17,8 @@ import {
   Divider,
   message,
   Spin,
-  TreeSelect
+  TreeSelect,
+  Form
 } from 'antd';
 import {
   FullscreenOutlined,
@@ -27,7 +28,10 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
   ReloadOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  EditOutlined,
+  SaveOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
@@ -156,6 +160,14 @@ const GraphVisualization: React.FC = () => {
   const [edgeLength, setEdgeLength] = useState(50);
   const [showLabels, setShowLabels] = useState(true);
   const [physics, setPhysics] = useState(true);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
+  const [mergeDrawerVisible, setMergeDrawerVisible] = useState(false);
+  const [mergedName, setMergedName] = useState('');
+  const [mergedDescription, setMergedDescription] = useState('');
+  const [isEditingEntity, setIsEditingEntity] = useState(false);
+  const [entityTypes, setEntityTypes] = useState<string[]>([]);
+  const [form] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
 
@@ -182,6 +194,7 @@ const GraphVisualization: React.FC = () => {
 
   useEffect(() => {
     loadGraphs();
+    loadEntityTypes();
   }, []);
 
   useEffect(() => {
@@ -232,6 +245,16 @@ const GraphVisualization: React.FC = () => {
     } catch (error) {
       console.error('加载图谱失败:', error);
       message.error('加载图谱失败');
+    }
+  };
+
+  const loadEntityTypes = async () => {
+    try {
+      const response = await apiService.getEntityTypes();
+      setEntityTypes(response.entity_types);
+    } catch (error) {
+      console.error('加载实体类型失败:', error);
+      message.error('加载实体类型失败');
     }
   };
 
@@ -545,11 +568,17 @@ const GraphVisualization: React.FC = () => {
         const nodes = networkData.nodes as GraphNode[];
         const node = nodes.find(n => n.id === nodeId);
         if (node) {
-          setSelectedNode(node);
-          setSelectedEdge(null);
-          setDrawerVisible(true);
+          if (mergeMode) {
+            // 合并模式下处理实体选择
+            handleEntitySelection(nodeId);
+          } else {
+            // 正常模式下显示节点详情
+            setSelectedNode(node);
+            setSelectedEdge(null);
+            setDrawerVisible(true);
+          }
         }
-      } else if (params.edges.length > 0) {
+      } else if (params.edges.length > 0 && !mergeMode) {
         const edgeId = params.edges[0];
         const edges = networkData.edges as GraphEdge[];
         const edge = edges.find(e => e.id === edgeId);
@@ -611,6 +640,165 @@ const GraphVisualization: React.FC = () => {
         link.click();
       }
     }
+  };
+
+  // 实体合并相关函数
+  const handleMergeMode = (enabled: boolean) => {
+    setMergeMode(enabled);
+    setSelectedEntities([]);
+    if (networkInstance.current) {
+      if (enabled) {
+        message.info('合并模式已开启，请选择两个要合并的实体节点');
+      } else {
+        networkInstance.current.unselectAll();
+        message.info('合并模式已关闭');
+      }
+    }
+  };
+
+  const handleEntitySelection = (nodeId: string) => {
+    if (!mergeMode) return;
+    
+    const newSelection = [...selectedEntities];
+    const index = newSelection.indexOf(nodeId);
+    
+    if (index > -1) {
+      // 取消选择
+      newSelection.splice(index, 1);
+    } else {
+      // 添加选择
+      if (newSelection.length >= 2) {
+        message.warning('最多只能选择两个实体进行合并');
+        return;
+      }
+      newSelection.push(nodeId);
+    }
+    
+    setSelectedEntities(newSelection);
+    
+    if (newSelection.length === 2) {
+      // 准备合并
+      const nodes = networkData.nodes as GraphNode[];
+      const sourceEntity = nodes.find(n => n.id === newSelection[0]);
+      const targetEntity = nodes.find(n => n.id === newSelection[1]);
+      
+      if (sourceEntity && targetEntity) {
+        setMergedName(targetEntity.label);
+        setMergedDescription('');
+        setMergeDrawerVisible(true);
+      }
+    }
+  };
+
+  const executeMerge = async () => {
+    if (selectedEntities.length !== 2) {
+      message.error('请选择两个实体进行合并');
+      return;
+    }
+
+    try {
+      const mergeRequest = {
+        source_entity_id: selectedEntities[0],
+        target_entity_id: selectedEntities[1],
+        merged_name: mergedName || undefined,
+        merged_description: mergedDescription || undefined
+      };
+
+      const response = await apiService.mergeEntities(mergeRequest);
+      
+      if (response.success) {
+        message.success(response.message);
+        setMergeDrawerVisible(false);
+        setMergeMode(false);
+        setSelectedEntities([]);
+        setMergedName('');
+        setMergedDescription('');
+        
+        // 重新加载图谱数据
+        if (selectedDocument) {
+          loadDocumentSubgraph();
+        } else if (selectedCategory) {
+          loadCategorySubgraph();
+        } else if (selectedGraph) {
+          loadGraphSubgraph();
+        }
+      } else {
+        message.error('合并失败: ' + response.message);
+      }
+    } catch (error) {
+      console.error('合并实体失败:', error);
+      message.error('合并实体失败');
+    }
+  };
+
+  const cancelMerge = () => {
+    setMergeDrawerVisible(false);
+    setSelectedEntities([]);
+    setMergedName('');
+    setMergedDescription('');
+    if (networkInstance.current) {
+      networkInstance.current.unselectAll();
+    }
+  };
+
+  // 实体编辑相关函数
+  const handleEditEntity = () => {
+    if (!selectedNode) return;
+    
+    setIsEditingEntity(true);
+    form.setFieldsValue({
+      name: selectedNode.label,
+      entity_type: selectedNode.type,
+      description: selectedNode.properties?.description || ''
+    });
+  };
+
+  const handleSaveEntity = async () => {
+    if (!selectedNode || !selectedGraph) return;
+    
+    try {
+      const values = await form.validateFields();
+      const updateData = {
+        name: values.name,
+        entity_type: values.entity_type,
+        description: values.description || '',
+        graph_id: selectedGraph.id
+      };
+
+      await apiService.updateEntity(selectedNode.id, updateData);
+      message.success('实体更新成功! 🎉');
+      
+      // 更新本地节点数据
+      const updatedNode = {
+        ...selectedNode,
+        label: values.name,
+        type: values.entity_type,
+        properties: {
+          ...selectedNode.properties,
+          description: values.description
+        }
+      };
+      setSelectedNode(updatedNode);
+      
+      setIsEditingEntity(false);
+      
+      // 重新加载图谱数据以更新可视化
+      if (selectedDocument) {
+        loadDocumentSubgraph();
+      } else if (selectedCategory) {
+        loadCategorySubgraph();
+      } else if (selectedGraph) {
+        loadGraphSubgraph();
+      }
+    } catch (error) {
+      console.error('更新实体失败:', error);
+      message.error('更新实体失败');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingEntity(false);
+    form.resetFields();
   };
 
   return (
@@ -709,6 +897,14 @@ const GraphVisualization: React.FC = () => {
                       </Tooltip>
                       <Tooltip title="下载图片">
                         <Button icon={<DownloadOutlined />} onClick={handleDownload} />
+                      </Tooltip>
+                      <Tooltip title="实体合并">
+                        <Button 
+                          type={mergeMode ? 'primary' : 'default'}
+                          onClick={() => handleMergeMode(!mergeMode)}
+                        >
+                          {mergeMode ? '🔗 合并中' : '🔗 合并'}
+                        </Button>
                       </Tooltip>
                       <Tooltip title="设置">
                         <Button icon={<SettingOutlined />} onClick={() => setDrawerVisible(true)} />
@@ -827,33 +1023,118 @@ const GraphVisualization: React.FC = () => {
       </Row>
 
       <Drawer
-        title={selectedNode ? '节点详情' : '关系详情'}
+        title={
+          selectedNode ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{isEditingEntity ? '编辑实体' : '节点详情'}</span>
+              {!isEditingEntity && (
+                <Button 
+                  type="text" 
+                  icon={<EditOutlined />} 
+                  onClick={handleEditEntity}
+                  size="small"
+                >
+                  编辑
+                </Button>
+              )}
+            </div>
+          ) : '关系详情'
+        }
         placement="right"
-        onClose={() => setDrawerVisible(false)}
+        onClose={() => {
+          setDrawerVisible(false);
+          setIsEditingEntity(false);
+          form.resetFields();
+        }}
         open={drawerVisible}
         width={400}
+        footer={
+          isEditingEntity && selectedNode ? (
+            <div style={{ textAlign: 'right' }}>
+              <Space>
+                <Button onClick={handleCancelEdit} icon={<CloseOutlined />}>
+                  取消
+                </Button>
+                <Button type="primary" onClick={handleSaveEntity} icon={<SaveOutlined />}>
+                  保存
+                </Button>
+              </Space>
+            </div>
+          ) : null
+        }
       >
         {selectedNode && (
           <div>
-            <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="ID">{selectedNode.id}</Descriptions.Item>
-              <Descriptions.Item label="名称">{selectedNode.label}</Descriptions.Item>
-              <Descriptions.Item label="类型">
-                <Tag color={getNodeColor(selectedNode.type)}>{selectedNode.type}</Tag>
-              </Descriptions.Item>
-            </Descriptions>
-            
-            {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <Text strong>属性信息</Text>
-                <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
-                  {Object.entries(selectedNode.properties).map(([key, value]) => (
-                    <Descriptions.Item key={key} label={key}>
-                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                    </Descriptions.Item>
-                  ))}
+            {!isEditingEntity ? (
+              // 查看模式
+              <>
+                <Descriptions column={1} bordered size="small">
+                  <Descriptions.Item label="ID">{selectedNode.id}</Descriptions.Item>
+                  <Descriptions.Item label="名称">{selectedNode.label}</Descriptions.Item>
+                  <Descriptions.Item label="类型">
+                    <Tag color={getNodeColor(selectedNode.type)}>{selectedNode.type}</Tag>
+                  </Descriptions.Item>
                 </Descriptions>
-              </div>
+                
+                {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <Text strong>属性信息</Text>
+                    <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
+                      {Object.entries(selectedNode.properties).map(([key, value]) => (
+                        <Descriptions.Item key={key} label={key}>
+                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        </Descriptions.Item>
+                      ))}
+                    </Descriptions>
+                  </div>
+                )}
+              </>
+            ) : (
+              // 编辑模式
+              <Form
+                form={form}
+                layout="vertical"
+                initialValues={{
+                  name: selectedNode.label,
+                  entity_type: selectedNode.type,
+                  description: selectedNode.properties?.description || ''
+                }}
+              >
+                <Form.Item
+                  label="实体名称"
+                  name="name"
+                  rules={[{ required: true, message: '请输入实体名称' }]}
+                >
+                  <Input placeholder="请输入实体名称" />
+                </Form.Item>
+                
+                <Form.Item
+                  label="实体类型"
+                  name="entity_type"
+                  rules={[{ required: true, message: '请选择实体类型' }]}
+                >
+                  <Select placeholder="请选择实体类型" showSearch>
+                    {entityTypes.map(type => (
+                      <Option key={type} value={type}>{type}</Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item
+                  label="描述"
+                  name="description"
+                >
+                  <Input.TextArea 
+                    rows={4} 
+                    placeholder="请输入实体描述（可选）" 
+                  />
+                </Form.Item>
+                
+                <div style={{ marginTop: 16, padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
+                  <Text strong style={{ color: '#666' }}>实体ID: </Text>
+                  <Text code>{selectedNode.id}</Text>
+                </div>
+              </Form>
             )}
           </div>
         )}
@@ -872,6 +1153,83 @@ const GraphVisualization: React.FC = () => {
                 <Descriptions.Item label="权重">{selectedEdge.weight}</Descriptions.Item>
               )}
             </Descriptions>
+          </div>
+        )}
+      </Drawer>
+
+      {/* 实体合并抽屉 */}
+      <Drawer
+        title="实体合并"
+        placement="right"
+        onClose={cancelMerge}
+        open={mergeDrawerVisible}
+        width={400}
+        footer={
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={cancelMerge}>取消</Button>
+              <Button type="primary" onClick={executeMerge}>
+                确认合并
+              </Button>
+            </Space>
+          </div>
+        }
+      >
+        {selectedEntities.length === 2 && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>合并说明：</Text>
+              <Paragraph>
+                将把第一个实体合并到第二个实体中，第一个实体将被删除，所有相关的关系和属性将转移到第二个实体。
+              </Paragraph>
+            </div>
+            
+            <Divider />
+            
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>源实体（将被删除）：</Text>
+              <div style={{ padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: 8 }}>
+                <Text>{(() => {
+                  const nodes = networkData.nodes as GraphNode[];
+                  const sourceEntity = nodes.find(n => n.id === selectedEntities[0]);
+                  return sourceEntity?.label || selectedEntities[0];
+                })()}</Text>
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>目标实体（保留）：</Text>
+              <div style={{ padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: 8 }}>
+                <Text>{(() => {
+                  const nodes = networkData.nodes as GraphNode[];
+                  const targetEntity = nodes.find(n => n.id === selectedEntities[1]);
+                  return targetEntity?.label || selectedEntities[1];
+                })()}</Text>
+              </div>
+            </div>
+            
+            <Divider />
+            
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>合并后名称：</Text>
+              <Input
+                value={mergedName}
+                onChange={(e) => setMergedName(e.target.value)}
+                placeholder="输入合并后的实体名称"
+                style={{ marginTop: 8 }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>合并后描述：</Text>
+              <Input.TextArea
+                value={mergedDescription}
+                onChange={(e) => setMergedDescription(e.target.value)}
+                placeholder="输入合并后的实体描述（可选）"
+                rows={3}
+                style={{ marginTop: 8 }}
+              />
+            </div>
           </div>
         )}
       </Drawer>

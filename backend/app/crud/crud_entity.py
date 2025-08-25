@@ -174,3 +174,128 @@ def search_entities(driver: Driver, graph_id: str, query: str, skip: int = 0, li
         """
         result = session.run(search_query, graph_id=graph_id, query=query, skip=skip, limit=limit)
         return [dict(record) for record in result]
+
+
+def merge_entities(driver: Driver, source_entity_id: str, target_entity_id: str, 
+                  merged_name: Optional[str] = None, merged_description: Optional[str] = None) -> Dict[str, Any]:
+    """
+    合并两个实体：将源实体合并到目标实体
+    1. 合并chunk_ids和document_ids
+    2. 更新所有指向源实体的关系，改为指向目标实体
+    3. 合并频次
+    4. 删除源实体
+    5. 更新目标实体信息
+    """
+    with driver.session() as session:
+        # 开始事务
+        with session.begin_transaction() as tx:
+            # 1. 获取源实体和目标实体信息
+            get_entities_query = """
+            MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+            RETURN source, target
+            """
+            entities_result = tx.run(get_entities_query, source_id=source_entity_id, target_id=target_entity_id)
+            entities_record = entities_result.single()
+            
+            if not entities_record:
+                raise ValueError("源实体或目标实体不存在")
+            
+            source_entity = dict(entities_record["source"])
+            target_entity = dict(entities_record["target"])
+            
+            # 2. 合并chunk_ids和document_ids
+            source_chunk_ids = source_entity.get("chunk_ids", []) or []
+            target_chunk_ids = target_entity.get("chunk_ids", []) or []
+            merged_chunk_ids = list(set(source_chunk_ids + target_chunk_ids))
+            
+            source_doc_ids = source_entity.get("document_ids", []) or []
+            target_doc_ids = target_entity.get("document_ids", []) or []
+            merged_doc_ids = list(set(source_doc_ids + target_doc_ids))
+            
+            # 3. 合并频次
+            source_frequency = source_entity.get("frequency", 1)
+            target_frequency = target_entity.get("frequency", 1)
+            merged_frequency = source_frequency + target_frequency
+            
+            # 4. 合并描述
+            if not merged_description:
+                source_desc = source_entity.get("description", "")
+                target_desc = target_entity.get("description", "")
+                if source_desc and target_desc:
+                    merged_description = f"{target_desc}"
+                else:
+                    merged_description = source_desc or target_desc
+            
+            # 5. 使用合并后的名称
+            if not merged_name:
+                merged_name = target_entity.get("name")
+            
+            # 6. 更新所有指向源实体的关系
+            update_relations_query = """
+            MATCH (source:Entity {id: $source_id})-[r:RELATION]-(other:Entity)
+            WHERE other.id <> $target_id
+            WITH r, other, type(r) as rel_type, properties(r) as rel_props
+            DELETE r
+            WITH other, rel_type, rel_props
+            MATCH (target:Entity {id: $target_id})
+            CREATE (target)-[new_r:RELATION]->(other)
+            SET new_r = rel_props
+            """
+            tx.run(update_relations_query, source_id=source_entity_id, target_id=target_entity_id)
+            
+            # 7. 更新反向关系
+            update_reverse_relations_query = """
+            MATCH (other:Entity)-[r:RELATION]->(source:Entity {id: $source_id})
+            WHERE other.id <> $target_id
+            WITH r, other, type(r) as rel_type, properties(r) as rel_props
+            DELETE r
+            WITH other, rel_type, rel_props
+            MATCH (target:Entity {id: $target_id})
+            CREATE (other)-[new_r:RELATION]->(target)
+            SET new_r = rel_props
+            """
+            tx.run(update_reverse_relations_query, source_id=source_entity_id, target_id=target_entity_id)
+            
+            # 8. 更新文档-实体关系
+            update_doc_relations_query = """
+            MATCH (doc:Document)-[r:HAS_ENTITY]->(source:Entity {id: $source_id})
+            WITH doc, r, properties(r) as rel_props
+            DELETE r
+            WITH doc, rel_props
+            MATCH (target:Entity {id: $target_id})
+            MERGE (doc)-[new_r:HAS_ENTITY]->(target)
+            SET new_r = rel_props
+            """
+            tx.run(update_doc_relations_query, source_id=source_entity_id, target_id=target_entity_id)
+            
+            # 9. 删除源实体
+            delete_source_query = """
+            MATCH (source:Entity {id: $source_id})
+            DELETE source
+            """
+            tx.run(delete_source_query, source_id=source_entity_id)
+            
+            # 10. 更新目标实体
+            update_target_query = """
+            MATCH (target:Entity {id: $target_id})
+            SET target.name = $name,
+                target.description = $description,
+                target.frequency = $frequency,
+                target.chunk_ids = $chunk_ids,
+                target.document_ids = $document_ids,
+                target.updated_at = datetime()
+            RETURN target
+            """
+            result = tx.run(update_target_query, 
+                          target_id=target_entity_id,
+                          name=merged_name,
+                          description=merged_description,
+                          frequency=merged_frequency,
+                          chunk_ids=merged_chunk_ids,
+                          document_ids=merged_doc_ids)
+            
+            updated_entity = result.single()
+            if updated_entity:
+                return dict(updated_entity["target"])
+            else:
+                raise ValueError("更新目标实体失败")

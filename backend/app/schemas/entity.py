@@ -32,6 +32,18 @@ class Entity(EntityBase):
     class Config:
         from_attributes = True
 
+# 实体合并Schema
+class EntityMergeRequest(BaseModel):
+    source_entity_id: str  # 源实体ID（将被合并到目标实体）
+    target_entity_id: str  # 目标实体ID（保留的实体）
+    merged_name: Optional[str] = None  # 合并后的名称，如果不提供则使用目标实体名称
+    merged_description: Optional[str] = None  # 合并后的描述，如果不提供则合并两个描述
+
+class EntityMergeResponse(BaseModel):
+    success: bool
+    message: str
+    merged_entity: Optional[Entity] = None
+
 # 文档-实体关系Schema
 class DocumentEntityRelationBase(BaseModel):
     document_id: str  # 改为字符串类型以支持Neo4j UUID
