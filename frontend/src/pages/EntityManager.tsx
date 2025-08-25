@@ -39,10 +39,12 @@ const EntityManager: React.FC = () => {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
+  const [entityTypes, setEntityTypes] = useState<string[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadGraphs();
+    loadEntityTypes();
   }, []);
 
   useEffect(() => {
@@ -71,6 +73,16 @@ const EntityManager: React.FC = () => {
     } catch (error) {
       console.error('加载图谱列表失败:', error);
       message.error('加载图谱列表失败');
+    }
+  };
+
+  const loadEntityTypes = async () => {
+    try {
+      const config = await apiService.getKnowledgeGraphConfig();
+      setEntityTypes(config.entity_types || []);
+    } catch (error) {
+      console.error('加载实体类型失败:', error);
+      message.error('加载实体类型失败');
     }
   };
 
@@ -136,7 +148,7 @@ const EntityManager: React.FC = () => {
     setEditingEntity(record);
     form.setFieldsValue({
       name: record.name,
-      type: record.type,
+      entity_type: record.entity_type,
       description: record.properties?.description || ''
     });
     setIsModalVisible(true);
@@ -158,7 +170,7 @@ const EntityManager: React.FC = () => {
       const values = await form.validateFields();
       const entityData: EntityCreateRequest = {
         name: values.name,
-        type: values.type,
+        entity_type: values.entity_type,
         description: values.description || '',
         graph_id: selectedGraphId
       };
@@ -201,8 +213,8 @@ const EntityManager: React.FC = () => {
     },
     {
       title: '类型',
-      dataIndex: 'type',
-      key: 'type',
+      dataIndex: 'entity_type',
+      key: 'entity_type',
       ellipsis: true
     },
     {
@@ -396,11 +408,22 @@ const EntityManager: React.FC = () => {
           </Form.Item>
           
           <Form.Item
-            name="type"
+            name="entity_type"
             label="实体类型"
-            rules={[{ required: true, message: '请输入实体类型' }]}
+            rules={[{ required: true, message: '请选择实体类型' }]}
           >
-            <Input placeholder="请输入实体类型" />
+            <Select 
+              placeholder="请选择实体类型"
+              showSearch
+              allowClear
+              filterOption={(input, option) =>
+                (option?.children as unknown as string)?.toLowerCase().includes(input.toLowerCase())
+              }
+            >
+              {entityTypes.map(type => (
+                <Option key={type} value={type}>{type}</Option>
+              ))}
+            </Select>
           </Form.Item>
           
           <Form.Item

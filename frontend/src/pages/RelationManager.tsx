@@ -205,7 +205,7 @@ const RelationManager: React.FC = () => {
   // 根据实体ID获取实体名称
   const getEntityNameById = (entityId: string): string => {
     const entity = entities.find(e => e.id === entityId);
-    return entity ? `${entity.name} (${entity.type})` : entityId;
+    return entity ? `${entity.name} (${entity.entity_type})` : entityId;
   };
 
   const columns: ColumnsType<Relationship> = [
@@ -446,7 +446,7 @@ const RelationManager: React.FC = () => {
             <Select placeholder="请选择源实体">
               {entities.map(entity => (
                 <Option key={entity.id} value={entity.id}>
-                  {entity.name} ({entity.type})
+                  {entity.name} ({entity.entity_type})
                 </Option>
               ))}
             </Select>
@@ -460,7 +460,7 @@ const RelationManager: React.FC = () => {
             <Select placeholder="请选择目标实体">
               {entities.map(entity => (
                 <Option key={entity.id} value={entity.id}>
-                  {entity.name} ({entity.type})
+                  {entity.name} ({entity.entity_type})
                 </Option>
               ))}
             </Select>

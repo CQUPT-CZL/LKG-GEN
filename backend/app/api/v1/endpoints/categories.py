@@ -123,7 +123,8 @@ def get_category_subgraph(
             graph_schemas.Entity(
                 id=entity["id"],
                 name=entity["name"],
-                type=entity["type"],
+                entity_type=entity["entity_type"],
+                description=entity.get("description", ""),
                 properties=entity["properties"]
             )
             for entity in subgraph_data["entities"]

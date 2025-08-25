@@ -238,7 +238,7 @@ const CategoryManager: React.FC = () => {
                         <div>
                           <strong>实体类型:</strong>
                           <div style={{ marginTop: 8 }}>
-                            {Array.from(new Set(subgraph.entities.map(e => e.type))).map(type => (
+                            {Array.from(new Set(subgraph.entities.map(e => e.entity_type))).map(type => (
                               <Tag key={type} color="blue">{type}</Tag>
                             ))}
                           </div>

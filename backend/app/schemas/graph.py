@@ -23,7 +23,8 @@ class Graph(GraphBase):
 class Entity(BaseModel):
     id: str
     name: str
-    type: Optional[str] = None
+    entity_type: Optional[str] = None
+    description: Optional[str] = None
     properties: Optional[dict] = None
     
     class Config:

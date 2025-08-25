@@ -312,7 +312,7 @@ const GraphVisualization: React.FC = () => {
     if (!subgraph) return;
 
     const nodes: GraphNode[] = subgraph.entities.map(entity => {
-      const nodeType: string = (entity.type as string) || (entity.properties?.entity_type as string) || 'Unknown';
+      const nodeType: string = (entity.entity_type as string) || (entity.properties?.entity_type as string) || 'Unknown';
       const nodeColor = getNodeColor(nodeType);
       const fontColor = getContrastingTextColor(nodeColor);
 

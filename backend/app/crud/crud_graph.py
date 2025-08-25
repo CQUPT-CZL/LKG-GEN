@@ -69,7 +69,8 @@ def get_document_subgraph(driver: Driver, document_id: int) -> dict:
             entities.append({
                 "id": processed_properties.get("id", ""),
                 "name": processed_properties.get("name", ""),
-                "type": processed_properties.get("type"),
+                "entity_type": processed_properties.get("entity_type") or processed_properties.get("type", ""),
+                "description": processed_properties.get("description", ""),
                 "properties": processed_properties
             })
         
@@ -154,7 +155,8 @@ def get_category_subgraph(driver: Driver, category_id: str) -> dict:
             entities.append({
                 "id": entity_node["id"],
                 "name": entity_node["name"],
-                "type": entity_node.get("entity_type"),
+                "entity_type": entity_node.get("entity_type") or entity_node.get("type", ""),
+                "description": entity_node.get("description", ""),
                 "properties": properties
             })
         
@@ -656,7 +658,8 @@ def get_graph_subgraph(driver: Driver, graph_id: str) -> dict:
                 "id": processed.get("id", ""),
                 "name": processed.get("name", ""),
                 # 兼容 entity_type 与 type 两种字段
-                "type": processed.get("entity_type") or processed.get("type"),
+                "entity_type": processed.get("entity_type") or processed.get("type", ""),
+                "description": processed.get("description", ""),
                 "properties": processed
             })
         # 处理关系

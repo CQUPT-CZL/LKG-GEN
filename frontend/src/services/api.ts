@@ -50,7 +50,7 @@ export interface Category {
 export interface Entity {
   id: string;
   name: string;
-  type?: string;
+  entity_type?: string;
   properties?: Record<string, any>;
 }
 
@@ -101,7 +101,7 @@ export interface BatchResourceResponse {
 
 export interface EntityCreateRequest {
   name: string;
-  type: string;
+  entity_type: string;
   description?: string;
   graph_id: string;
 }
