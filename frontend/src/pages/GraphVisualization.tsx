@@ -153,6 +153,7 @@ const GraphVisualization: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [nodeSize, setNodeSize] = useState(25);
   const [edgeWidth, setEdgeWidth] = useState(2);
+  const [edgeLength, setEdgeLength] = useState(50);
   const [showLabels, setShowLabels] = useState(true);
   const [physics, setPhysics] = useState(true);
   const networkRef = useRef<HTMLDivElement>(null);
@@ -222,7 +223,7 @@ const GraphVisualization: React.FC = () => {
     if (networkData.nodes && networkData.nodes.length > 0 && networkRef.current) {
       initializeNetwork();
     }
-  }, [networkData, nodeSize, edgeWidth, showLabels, physics]);
+  }, [networkData, nodeSize, edgeWidth, edgeLength, showLabels, physics]);
 
   const loadGraphs = async () => {
     try {
@@ -440,11 +441,15 @@ const GraphVisualization: React.FC = () => {
 
     const options: Options = {
       nodes: {
-        shape: 'dot',
+        shape: 'ellipse',
         size: nodeSize,
         font: {
-          size: showLabels ? 14 : 0,
-          face: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"'
+          size: showLabels ? 12 : 0,
+          color: '#ffffff',
+          face: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',
+          strokeWidth: 0,
+          align: 'center',
+          vadjust: 0
         },
         borderWidth: 2,
         borderWidthSelected: 4,
@@ -455,6 +460,16 @@ const GraphVisualization: React.FC = () => {
           x: 3,
           y: 3
         },
+        widthConstraint: {
+          minimum: 80,
+          maximum: 200
+        },
+        margin: {
+          top: 10,
+          right: 10,
+          bottom: 10,
+          left: 10
+        }
       },
       edges: {
         width: edgeWidth,
@@ -466,8 +481,8 @@ const GraphVisualization: React.FC = () => {
         },
         smooth: {
           enabled: true,
-          type: 'dynamic',
-          roundness: 0.5
+          type: 'straightCross',
+          roundness: 0.2
         },
         arrows: {
           to: { enabled: true, scaleFactor: 0.8 }
@@ -482,15 +497,17 @@ const GraphVisualization: React.FC = () => {
       physics: {
         enabled: physics,
         barnesHut: {
-          gravitationalConstant: -30000,
-          centralGravity: 0.3,
-          springLength: 150,
-          springConstant: 0.05,
-          damping: 0.09,
-          avoidOverlap: 0.1
+          gravitationalConstant: -5000,
+          centralGravity: 0.5,
+          springLength: edgeLength,
+          springConstant: 0.15,
+          damping: 0.4,
+          avoidOverlap: 0.05
         },
         stabilization: { 
-          iterations: 200,
+          iterations: 500,
+          updateInterval: 25,
+          onlyDynamicEdges: false,
           fit: true
         }
       },
@@ -769,6 +786,23 @@ const GraphVisualization: React.FC = () => {
                       value={edgeWidth}
                       onChange={setEdgeWidth}
                       style={{ marginTop: 8 }}
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <Text>边长度</Text>
+                    <Slider
+                      min={20}
+                      max={150}
+                      value={edgeLength}
+                      onChange={setEdgeLength}
+                      style={{ marginTop: 8 }}
+                      marks={{
+                        20: '短',
+                        50: '中',
+                        100: '长',
+                        150: '很长'
+                      }}
                     />
                   </div>
                   
