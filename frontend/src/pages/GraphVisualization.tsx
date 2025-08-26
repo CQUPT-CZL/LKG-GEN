@@ -56,6 +56,7 @@ interface GraphEdge extends Edge {
   type: string;
   description?: string;
   weight?: number;
+  properties?: Record<string, any>;
 }
 
 interface GraphStats {
@@ -164,6 +165,8 @@ const GraphVisualization: React.FC = () => {
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
   const [mergeDrawerVisible, setMergeDrawerVisible] = useState(false);
+  // 点击节点进入子图模式开关（默认开启）
+  const [clickToSubgraph, setClickToSubgraph] = useState<boolean>(true);
   const [mergedName, setMergedName] = useState('');
   const [mergedDescription, setMergedDescription] = useState('');
   const [isEditingEntity, setIsEditingEntity] = useState(false);
@@ -400,7 +403,12 @@ const GraphVisualization: React.FC = () => {
         id: entity.id.toString(),
         label: entity.name,
         type: nodeType,
-        properties: entity.properties,
+        properties: {
+          ...(entity as any).properties,
+          ...(((entity as any).description) ? { description: (entity as any).description } : {}),
+          ...(((entity as any).frequency !== undefined) ? { frequency: (entity as any).frequency } : {}),
+          ...(((entity as any).entity_type && !(entity as any).properties?.entity_type) ? { entity_type: (entity as any).entity_type } : {})
+        },
         color: {
           background: nodeColor,
           border: '#2B7CE9',
@@ -419,7 +427,7 @@ const GraphVisualization: React.FC = () => {
           strokeWidth: 0.5,
           strokeColor: fontColor === '#ffffff' ? '#000000' : '#ffffff'
         },
-        size: nodeSize
+        size: (entitySubgraphMode && currentEntityId === entity.id.toString()) ? (nodeSize + 10) : nodeSize
       } as GraphNode;
     });
 
@@ -429,7 +437,7 @@ const GraphVisualization: React.FC = () => {
       const fromId = (anyRel.source_entity_id ?? anyRel.start_node_id ?? '').toString();
       const toId = (anyRel.target_entity_id ?? anyRel.end_node_id ?? '').toString();
       const relType = (anyRel.properties?.relation_type ?? anyRel.relation_type ?? anyRel.type ?? '') as string;
-      const description = anyRel.description || '';
+      const description = anyRel.description || anyRel.properties?.description || '';
       
       console.log('Edge data:', { id: anyRel.id, fromId, toId, relType, description, anyRel });
       console.log('Final edge object:', { id: (anyRel.id ?? '').toString(), from: fromId, to: toId, label: relType, type: relType });
@@ -445,7 +453,8 @@ const GraphVisualization: React.FC = () => {
         description: description,
         title: titleText, // 添加悬浮提示
         width: edgeWidth,
-        arrows: 'to'
+        arrows: 'to',
+        properties: anyRel.properties
       } as GraphEdge;
     });
 
@@ -536,7 +545,7 @@ const GraphVisualization: React.FC = () => {
         borderWidth: 2,
         borderWidthSelected: 4,
         shadow: {
-          enabled: true,
+          enabled: false,
           color: 'rgba(0,0,0,0.2)',
           size: 7,
           x: 3,
@@ -563,7 +572,7 @@ const GraphVisualization: React.FC = () => {
         },
         smooth: {
           enabled: true,
-          type: 'straightCross',
+          type: 'continuous',
           roundness: 0.2
         },
         arrows: {
@@ -578,20 +587,22 @@ const GraphVisualization: React.FC = () => {
       },
       physics: {
         enabled: physics,
-        barnesHut: {
-          gravitationalConstant: -5000,
-          centralGravity: 0.5,
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: {
+          gravitationalConstant: -50,
+          centralGravity: 0.01,
           springLength: edgeLength,
-          springConstant: 0.15,
+          springConstant: 0.08,
           damping: 0.4,
-          avoidOverlap: 0.05
+          avoidOverlap: 1.0
         },
-        stabilization: { 
-          iterations: 500,
+        stabilization: {
+          iterations: 800,
           updateInterval: 25,
           onlyDynamicEdges: false,
           fit: true
-        }
+        },
+        timestep: 0.35
       },
       interaction: {
         hover: true,
@@ -605,6 +616,7 @@ const GraphVisualization: React.FC = () => {
       },
       layout: {
         improvedLayout: true,
+        randomSeed: 42,
         hierarchical: {
           enabled: false
         }
@@ -620,6 +632,24 @@ const GraphVisualization: React.FC = () => {
 
     networkInstance.current = new Network(networkRef.current, networkData, options);
 
+    // 添加事件：稳定后禁用物理以固定布局，避免后续抖动并进一步减少重叠
+    networkInstance.current.once('stabilizationIterationsDone', () => {
+      if (networkInstance.current) {
+        networkInstance.current.setOptions({ physics: { enabled: false } });
+        networkInstance.current.fit();
+      }
+    });
+
+    // 如果处于实体子图模式，自动选中并聚焦中心节点，保证清晰展示
+    if (entitySubgraphMode && currentEntityId) {
+      try {
+        networkInstance.current.selectNodes([currentEntityId]);
+        networkInstance.current.focus(currentEntityId, { scale: 1.2, animation: true });
+      } catch (e) {
+        // ignore
+      }
+    }
+
     // 添加事件监听器
     networkInstance.current.on('click', (params) => {
       if (params.nodes.length > 0) {
@@ -630,6 +660,9 @@ const GraphVisualization: React.FC = () => {
           if (mergeMode) {
             // 合并模式下处理实体选择
             handleEntitySelection(nodeId);
+          } else if (clickToSubgraph) {
+            // 点击进入该节点的1跳子图视图
+            loadEntitySubgraph(nodeId);
           } else {
             // 正常模式下显示节点详情
             setSelectedNode(node);
@@ -638,6 +671,33 @@ const GraphVisualization: React.FC = () => {
           }
         }
       } else if (params.edges.length > 0 && !mergeMode) {
+        const edgeId = params.edges[0];
+        const edges = networkData.edges as GraphEdge[];
+        const edge = edges.find(e => e.id === edgeId);
+        if (edge) {
+          setSelectedEdge(edge);
+          setSelectedNode(null);
+          setDrawerVisible(true);
+        }
+      }
+    });
+
+    // 右键打开侧边栏（节点/边详情）
+    networkInstance.current.on('oncontext', (params: any) => {
+      // 阻止浏览器默认右键菜单
+      if (params?.event?.preventDefault) params.event.preventDefault();
+      if (params?.event?.stopPropagation) params.event.stopPropagation();
+
+      if (params.nodes && params.nodes.length > 0) {
+        const nodeId = params.nodes[0];
+        const nodes = networkData.nodes as GraphNode[];
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+          setSelectedEdge(null);
+          setDrawerVisible(true);
+        }
+      } else if (params.edges && params.edges.length > 0) {
         const edgeId = params.edges[0];
         const edges = networkData.edges as GraphEdge[];
         const edge = edges.find(e => e.id === edgeId);
@@ -1177,6 +1237,12 @@ const GraphVisualization: React.FC = () => {
                   <Descriptions.Item label="类型">
                     <Tag color={getNodeColor(selectedNode.type)}>{selectedNode.type}</Tag>
                   </Descriptions.Item>
+                  {selectedNode.properties?.description && (
+                    <Descriptions.Item label="描述">{selectedNode.properties.description}</Descriptions.Item>
+                  )}
+                  {selectedNode.properties?.frequency !== undefined && (
+                    <Descriptions.Item label="频次">{selectedNode.properties.frequency}</Descriptions.Item>
+                  )}
                 </Descriptions>
                 
                 {/* 实体子图操作按钮 */}
@@ -1207,7 +1273,7 @@ const GraphVisualization: React.FC = () => {
                     <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
                       {Object.entries(selectedNode.properties).map(([key, value]) => (
                         <Descriptions.Item key={key} label={key}>
-                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
                         </Descriptions.Item>
                       ))}
                     </Descriptions>
@@ -1272,12 +1338,35 @@ const GraphVisualization: React.FC = () => {
               {selectedEdge.description && (
                 <Descriptions.Item label="描述">{selectedEdge.description}</Descriptions.Item>
               )}
-              <Descriptions.Item label="源节点">{selectedEdge.from}</Descriptions.Item>
-              <Descriptions.Item label="目标节点">{selectedEdge.to}</Descriptions.Item>
+              <Descriptions.Item label="源节点">{(() => {
+                const nodes = networkData.nodes as GraphNode[];
+                const n = nodes.find(node => node.id === selectedEdge.from);
+                return n ? `${n.label} (${selectedEdge.from})` : selectedEdge.from;
+              })()}</Descriptions.Item>
+              <Descriptions.Item label="目标节点">{(() => {
+                const nodes = networkData.nodes as GraphNode[];
+                const n = nodes.find(node => node.id === selectedEdge.to);
+                return n ? `${n.label} (${selectedEdge.to})` : selectedEdge.to;
+              })()}</Descriptions.Item>
+              {selectedEdge.properties?.confidence !== undefined && (
+                <Descriptions.Item label="置信度">{String(selectedEdge.properties.confidence)}</Descriptions.Item>
+              )}
               {selectedEdge.weight && (
                 <Descriptions.Item label="权重">{selectedEdge.weight}</Descriptions.Item>
               )}
             </Descriptions>
+            {selectedEdge.properties && Object.keys(selectedEdge.properties).length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Text strong>属性信息</Text>
+                <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
+                  {Object.entries(selectedEdge.properties).map(([key, value]) => (
+                    <Descriptions.Item key={key} label={key}>
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </div>
+            )}
           </div>
         )}
       </Drawer>
