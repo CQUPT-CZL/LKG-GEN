@@ -18,7 +18,8 @@ import {
   message,
   Spin,
   TreeSelect,
-  Form
+  Form,
+  Modal
 } from 'antd';
 import {
   FullscreenOutlined,
@@ -32,7 +33,8 @@ import {
   InfoCircleOutlined,
   EditOutlined,
   SaveOutlined,
-  CloseOutlined
+  CloseOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
@@ -940,6 +942,41 @@ const GraphVisualization: React.FC = () => {
     form.resetFields();
   };
 
+  const handleDeleteEntity = () => {
+    if (!selectedNode || !selectedGraph) return;
+    
+    Modal.confirm({
+      title: '确认删除实体',
+      content: `确定要删除实体 "${selectedNode.label}" 吗？此操作不可撤销。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await apiService.deleteEntity(selectedNode.id);
+          message.success('实体删除成功! 🗑️');
+          
+          // 关闭Drawer
+          setDrawerVisible(false);
+          setSelectedNode(null);
+          setIsEditingEntity(false);
+          
+          // 重新加载图谱数据以更新可视化
+          if (selectedDocument) {
+            loadDocumentSubgraph();
+          } else if (selectedCategory) {
+            loadCategorySubgraph();
+          } else if (selectedGraph) {
+            loadGraphSubgraph();
+          }
+        } catch (error) {
+          console.error('删除实体失败:', error);
+          message.error('删除实体失败');
+        }
+      }
+    });
+  };
+
   // 边编辑相关函数
   const handleEditEdge = () => {
     if (!selectedEdge) return;
@@ -1295,12 +1332,14 @@ const GraphVisualization: React.FC = () => {
         }}
         open={drawerVisible}
         width={400}
-        footer={
-          isEditingEntity && selectedNode ? (
+        footer={isEditingEntity && selectedNode ? (
             <div style={{ textAlign: 'right' }}>
               <Space>
                 <Button onClick={handleCancelEdit} icon={<CloseOutlined />}>
                   取消
+                </Button>
+                <Button danger onClick={handleDeleteEntity} icon={<DeleteOutlined />}>
+                  删除
                 </Button>
                 <Button type="primary" onClick={handleSaveEntity} icon={<SaveOutlined />}>
                   保存
