@@ -244,6 +244,8 @@ export const apiService = {
     api.get(`/relations/?graph_id=${graphId}`),
   createRelation: (data: RelationCreateRequest): Promise<Relationship> => 
     api.post('/relations', data),
+  updateRelation: (relationId: string, data: Partial<RelationCreateRequest>): Promise<Relationship> => 
+    api.put(`/relations/${relationId}`, data),
   deleteRelation: (relationId: string): Promise<{ message: string }> => 
     api.delete(`/relations/${relationId}`),
 

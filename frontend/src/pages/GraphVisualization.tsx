@@ -170,8 +170,11 @@ const GraphVisualization: React.FC = () => {
   const [mergedName, setMergedName] = useState('');
   const [mergedDescription, setMergedDescription] = useState('');
   const [isEditingEntity, setIsEditingEntity] = useState(false);
+  const [isEditingEdge, setIsEditingEdge] = useState(false);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
+  const [relationshipTypes, setRelationshipTypes] = useState<string[]>([]);
   const [form] = Form.useForm();
+  const [edgeForm] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
   
@@ -206,6 +209,7 @@ const GraphVisualization: React.FC = () => {
   useEffect(() => {
     loadGraphs();
     loadEntityTypes();
+    loadRelationshipTypes();
   }, []);
 
   useEffect(() => {
@@ -266,6 +270,16 @@ const GraphVisualization: React.FC = () => {
     } catch (error) {
       console.error('加载实体类型失败:', error);
       message.error('加载实体类型失败');
+    }
+  };
+
+  const loadRelationshipTypes = async () => {
+    try {
+      const response = await apiService.getRelationTypes();
+      setRelationshipTypes(response.relation_types);
+    } catch (error) {
+      console.error('加载关系类型失败:', error);
+      message.error('加载关系类型失败');
     }
   };
 
@@ -926,6 +940,60 @@ const GraphVisualization: React.FC = () => {
     form.resetFields();
   };
 
+  // 边编辑相关函数
+  const handleEditEdge = () => {
+    if (!selectedEdge) return;
+    
+    setIsEditingEdge(true);
+    edgeForm.setFieldsValue({
+      type: selectedEdge.type,
+      description: selectedEdge.description || ''
+    });
+  };
+
+  const handleSaveEdge = async () => {
+    if (!selectedEdge || !selectedGraph) return;
+    
+    try {
+      const values = await edgeForm.validateFields();
+      const updateData = {
+        relation_type: values.type,
+        description: values.description || '',
+        graph_id: selectedGraph.id
+      };
+
+      await apiService.updateRelation(selectedEdge.id, updateData);
+      message.success('关系更新成功! 🎉');
+      
+      // 更新本地边数据
+      const updatedEdge = {
+        ...selectedEdge,
+        type: values.type,
+        description: values.description
+      };
+      setSelectedEdge(updatedEdge);
+      
+      setIsEditingEdge(false);
+      
+      // 重新加载图谱数据以更新可视化
+      if (selectedDocument) {
+        loadDocumentSubgraph();
+      } else if (selectedCategory) {
+        loadCategorySubgraph();
+      } else if (selectedGraph) {
+        loadGraphSubgraph();
+      }
+    } catch (error) {
+      console.error('更新关系失败:', error);
+      message.error('更新关系失败');
+    }
+  };
+
+  const handleCancelEditEdge = () => {
+    setIsEditingEdge(false);
+    edgeForm.resetFields();
+  };
+
   return (
     <div style={{ 
       padding: isFullscreen ? '0' : '24px',
@@ -1201,13 +1269,29 @@ const GraphVisualization: React.FC = () => {
                 </Button>
               )}
             </div>
-          ) : '关系详情'
+          ) : selectedEdge ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{isEditingEdge ? '编辑关系' : '关系详情'}</span>
+              {!isEditingEdge && (
+                <Button 
+                  type="text" 
+                  icon={<EditOutlined />} 
+                  onClick={handleEditEdge}
+                  size="small"
+                >
+                  编辑
+                </Button>
+              )}
+            </div>
+          ) : '详情'
         }
         placement="right"
         onClose={() => {
           setDrawerVisible(false);
           setIsEditingEntity(false);
+          setIsEditingEdge(false);
           form.resetFields();
+          edgeForm.resetFields();
         }}
         open={drawerVisible}
         width={400}
@@ -1219,6 +1303,17 @@ const GraphVisualization: React.FC = () => {
                   取消
                 </Button>
                 <Button type="primary" onClick={handleSaveEntity} icon={<SaveOutlined />}>
+                  保存
+                </Button>
+              </Space>
+            </div>
+          ) : isEditingEdge && selectedEdge ? (
+            <div style={{ textAlign: 'right' }}>
+              <Space>
+                <Button onClick={handleCancelEditEdge} icon={<CloseOutlined />}>
+                  取消
+                </Button>
+                <Button type="primary" onClick={handleSaveEdge} icon={<SaveOutlined />}>
                   保存
                 </Button>
               </Space>
@@ -1332,40 +1427,98 @@ const GraphVisualization: React.FC = () => {
         
         {selectedEdge && (
           <div>
-            <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="ID">{selectedEdge.id}</Descriptions.Item>
-              <Descriptions.Item label="类型">{selectedEdge.type}</Descriptions.Item>
-              {selectedEdge.description && (
-                <Descriptions.Item label="描述">{selectedEdge.description}</Descriptions.Item>
-              )}
-              <Descriptions.Item label="源节点">{(() => {
-                const nodes = networkData.nodes as GraphNode[];
-                const n = nodes.find(node => node.id === selectedEdge.from);
-                return n ? `${n.label} (${selectedEdge.from})` : selectedEdge.from;
-              })()}</Descriptions.Item>
-              <Descriptions.Item label="目标节点">{(() => {
-                const nodes = networkData.nodes as GraphNode[];
-                const n = nodes.find(node => node.id === selectedEdge.to);
-                return n ? `${n.label} (${selectedEdge.to})` : selectedEdge.to;
-              })()}</Descriptions.Item>
-              {selectedEdge.properties?.confidence !== undefined && (
-                <Descriptions.Item label="置信度">{String(selectedEdge.properties.confidence)}</Descriptions.Item>
-              )}
-              {selectedEdge.weight && (
-                <Descriptions.Item label="权重">{selectedEdge.weight}</Descriptions.Item>
-              )}
-            </Descriptions>
-            {selectedEdge.properties && Object.keys(selectedEdge.properties).length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <Text strong>属性信息</Text>
-                <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
-                  {Object.entries(selectedEdge.properties).map(([key, value]) => (
-                    <Descriptions.Item key={key} label={key}>
-                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                    </Descriptions.Item>
-                  ))}
+            {!isEditingEdge ? (
+              // 查看模式
+              <>
+                <Descriptions column={1} bordered size="small">
+                  <Descriptions.Item label="ID">{selectedEdge.id}</Descriptions.Item>
+                  <Descriptions.Item label="类型">{selectedEdge.type}</Descriptions.Item>
+                  {selectedEdge.description && (
+                    <Descriptions.Item label="描述">{selectedEdge.description}</Descriptions.Item>
+                  )}
+                  <Descriptions.Item label="源节点">{(() => {
+                    const nodes = networkData.nodes as GraphNode[];
+                    const n = nodes.find(node => node.id === selectedEdge.from);
+                    return n ? `${n.label} (${selectedEdge.from})` : selectedEdge.from;
+                  })()}</Descriptions.Item>
+                  <Descriptions.Item label="目标节点">{(() => {
+                    const nodes = networkData.nodes as GraphNode[];
+                    const n = nodes.find(node => node.id === selectedEdge.to);
+                    return n ? `${n.label} (${selectedEdge.to})` : selectedEdge.to;
+                  })()}</Descriptions.Item>
+                  {selectedEdge.properties?.confidence !== undefined && (
+                    <Descriptions.Item label="置信度">{String(selectedEdge.properties.confidence)}</Descriptions.Item>
+                  )}
+                  {selectedEdge.weight && (
+                    <Descriptions.Item label="权重">{selectedEdge.weight}</Descriptions.Item>
+                  )}
                 </Descriptions>
-              </div>
+                {selectedEdge.properties && Object.keys(selectedEdge.properties).length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <Text strong>属性信息</Text>
+                    <Descriptions column={1} bordered size="small" style={{ marginTop: 8 }}>
+                      {Object.entries(selectedEdge.properties).map(([key, value]) => (
+                        <Descriptions.Item key={key} label={key}>
+                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        </Descriptions.Item>
+                      ))}
+                    </Descriptions>
+                  </div>
+                )}
+              </>
+            ) : (
+              // 编辑模式
+              <Form
+                form={edgeForm}
+                layout="vertical"
+                initialValues={{
+                  type: selectedEdge.type,
+                  description: selectedEdge.description || ''
+                }}
+              >
+                <Form.Item
+                  label="关系类型"
+                  name="type"
+                  rules={[{ required: true, message: '请选择关系类型' }]}
+                >
+                  <Select placeholder="请选择关系类型" showSearch>
+                    {relationshipTypes.map(type => (
+                      <Option key={type} value={type}>{type}</Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item
+                  label="描述"
+                  name="description"
+                >
+                  <Input.TextArea 
+                    rows={4} 
+                    placeholder="请输入关系描述（可选）" 
+                  />
+                </Form.Item>
+                
+                <div style={{ marginTop: 16, padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
+                  <Text strong style={{ color: '#666' }}>关系ID: </Text>
+                  <Text code>{selectedEdge.id}</Text>
+                </div>
+                
+                <div style={{ marginTop: 12, padding: '12px', backgroundColor: '#f0f8ff', borderRadius: '6px' }}>
+                  <Text strong style={{ color: '#666' }}>源节点: </Text>
+                  <Text>{(() => {
+                    const nodes = networkData.nodes as GraphNode[];
+                    const n = nodes.find(node => node.id === selectedEdge.from);
+                    return n ? `${n.label} (${selectedEdge.from})` : selectedEdge.from;
+                  })()}</Text>
+                  <br />
+                  <Text strong style={{ color: '#666' }}>目标节点: </Text>
+                  <Text>{(() => {
+                    const nodes = networkData.nodes as GraphNode[];
+                    const n = nodes.find(node => node.id === selectedEdge.to);
+                    return n ? `${n.label} (${selectedEdge.to})` : selectedEdge.to;
+                  })()}</Text>
+                </div>
+              </Form>
             )}
           </div>
         )}
