@@ -157,6 +157,63 @@ export interface PromptTypesListResponse {
   types: PromptType[];
 }
 
+// AI配置相关接口
+export interface AIConfig {
+  id: number;
+  name: string;
+  provider: 'openai' | 'anthropic' | 'azure' | 'google' | 'ollama' | 'custom';
+  model_name: string;
+  api_key: string;
+  base_url?: string;
+  temperature?: number;
+  max_tokens?: number;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIConfigCreate {
+  name: string;
+  provider: 'openai' | 'anthropic' | 'azure' | 'google' | 'ollama' | 'custom';
+  model_name: string;
+  api_key: string;
+  base_url?: string;
+  temperature?: number;
+  max_tokens?: number;
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
+export interface AIConfigUpdate {
+  name?: string;
+  provider?: 'openai' | 'anthropic' | 'azure' | 'google' | 'ollama' | 'custom';
+  model_name?: string;
+  api_key?: string;
+  base_url?: string;
+  temperature?: number;
+  max_tokens?: number;
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
+export interface AIConfigListResponse {
+  configs: AIConfig[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AIProvider {
+  provider: string;
+  display_name: string;
+  description: string;
+}
+
+export interface AIProvidersListResponse {
+  providers: AIProvider[];
+}
+
 export interface BatchResourceResponse {
   success_count: number;
   failed_count: number;
@@ -331,6 +388,39 @@ export const apiService = {
     api.post('/prompts/set-default', { prompt_id: promptId }),
   getPromptTypes: (): Promise<PromptTypesListResponse> => 
     api.get('/prompts/types/list'),
+
+  // AI配置管理API
+  getAIConfigs: (params?: {
+    provider?: string;
+    is_active?: boolean;
+    page?: number;
+    size?: number;
+  }): Promise<AIConfigListResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.provider) searchParams.append('provider', params.provider);
+    if (params?.is_active !== undefined) searchParams.append('is_active', params.is_active.toString());
+    if (params?.page) searchParams.append('page', params.page.toString());
+    if (params?.size) searchParams.append('page_size', params.size.toString());
+    return api.get(`/ai-configs/list?${searchParams.toString()}`);
+  },
+  getAIConfig: (configId: number): Promise<AIConfig> => 
+    api.get(`/ai-configs/${configId}`),
+  createAIConfig: (data: AIConfigCreate): Promise<AIConfig> => 
+    api.post('/ai-configs/', data),
+  updateAIConfig: (configId: number, data: AIConfigUpdate): Promise<AIConfig> => 
+    api.put(`/ai-configs/${configId}`, data),
+  deleteAIConfig: (configId: number): Promise<{ message: string }> => 
+    api.delete(`/ai-configs/${configId}`),
+  getDefaultAIConfig: (): Promise<AIConfig> => 
+    api.get('/ai-configs/default/get'),
+  setDefaultAIConfig: (configId: number): Promise<{ message: string }> => 
+    api.post('/ai-configs/default/set', { config_id: configId }),
+  activateAIConfig: (configId: number): Promise<{ message: string }> => 
+    api.post(`/ai-configs/${configId}/activate`),
+  deactivateAIConfig: (configId: number): Promise<{ message: string }> => 
+    api.post(`/ai-configs/${configId}/deactivate`),
+  getAIProviders: (): Promise<AIProvidersListResponse> => 
+    api.get('/ai-configs/providers/list'),
 };
 
 export default api;

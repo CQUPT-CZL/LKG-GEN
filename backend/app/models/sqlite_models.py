@@ -40,6 +40,16 @@ class PromptTypeEnum(enum.Enum):
     custom = "custom"  # 自定义类型
 
 
+# 定义一个Python枚举类，用于AI提供商类型
+class AIProviderEnum(enum.Enum):
+    openai = "openai"  # OpenAI
+    anthropic = "anthropic"  # Anthropic Claude
+    azure = "azure"  # Azure OpenAI
+    google = "google"  # Google Gemini
+    ollama = "ollama"  # Ollama本地模型
+    custom = "custom"  # 自定义提供商
+
+
 class SourceDocument(Base):
     """
     源文档表模型
@@ -113,4 +123,29 @@ class Prompt(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # 添加唯一约束：每种类型只能有一个默认prompt
+    # 这个约束需要在数据库层面通过migration或手动创建
+
+
+class AIConfig(Base):
+    """
+    AI配置表模型
+    存储各种AI提供商的配置信息，支持多个配置和默认设置
+    """
+    __tablename__ = "ai_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)  # 配置名称
+    provider = Column(Enum(AIProviderEnum), nullable=False, index=True)  # AI提供商
+    model_name = Column(String, nullable=False)  # 模型名称
+    api_key = Column(String, nullable=False)  # API密钥
+    base_url = Column(String, nullable=True)  # API基础URL（可选）
+    temperature = Column(String, nullable=False, default="0.7")  # 温度参数
+    max_tokens = Column(String, nullable=False, default="4000")  # 最大token数
+    description = Column(Text, nullable=True)  # 配置描述
+    is_default = Column(Integer, nullable=False, default=0)  # 是否为默认配置 (0=否, 1=是)
+    is_active = Column(Integer, nullable=False, default=1)  # 是否激活 (0=否, 1=是)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # 添加唯一约束：只能有一个默认配置
     # 这个约束需要在数据库层面通过migration或手动创建

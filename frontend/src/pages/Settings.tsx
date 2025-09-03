@@ -39,7 +39,7 @@ import {
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { apiService, KnowledgeGraphConfig, Prompt, PromptCreate, PromptUpdate, PromptType, PromptTypesListResponse } from '../services/api';
+import { apiService, KnowledgeGraphConfig, Prompt, PromptCreate, PromptUpdate, PromptType, PromptTypesListResponse, AIConfig, AIConfigCreate, AIConfigUpdate, AIProvider } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -77,15 +77,7 @@ interface SystemConfig {
   };
 }
 
-interface ApiKey {
-  id: string;
-  name: string;
-  key: string;
-  provider: string;
-  status: 'active' | 'inactive';
-  createdAt: string;
-  lastUsed?: string;
-}
+// 移除旧的ApiKey接口，使用新的AIConfig接口
 
 const Settings: React.FC = () => {
   const [form] = Form.useForm();
@@ -123,29 +115,12 @@ const Settings: React.FC = () => {
     }
   });
   
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([
-    {
-      id: '1',
-      name: 'OpenAI GPT',
-      key: 'sk-*********************',
-      provider: 'OpenAI',
-      status: 'active',
-      createdAt: '2024-01-15',
-      lastUsed: '2024-01-20'
-    },
-    {
-      id: '2',
-      name: 'Claude API',
-      key: 'sk-ant-*********************',
-      provider: 'Anthropic',
-      status: 'inactive',
-      createdAt: '2024-01-18'
-    }
-  ]);
+  const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([]);
+  const [aiProviders, setAiProviders] = useState<AIProvider[]>([]);
   
-  const [isApiKeyModalVisible, setIsApiKeyModalVisible] = useState(false);
-  const [editingApiKey, setEditingApiKey] = useState<ApiKey | null>(null);
-  const [apiKeyForm] = Form.useForm();
+  const [isAiConfigModalVisible, setIsAiConfigModalVisible] = useState(false);
+  const [editingAiConfig, setEditingAiConfig] = useState<AIConfig | null>(null);
+  const [aiConfigForm] = Form.useForm();
   
   // 知识图谱配置相关状态
   const [kgConfig, setKgConfig] = useState<KnowledgeGraphConfig>({
@@ -173,6 +148,8 @@ const Settings: React.FC = () => {
     loadKnowledgeGraphConfig();
     loadPrompts();
     loadPromptTypes();
+    loadAiConfigs();
+    loadAiProviders();
   }, []);
   
   // 加载知识图谱配置
@@ -234,6 +211,28 @@ const Settings: React.FC = () => {
       console.error('加载Prompt类型失败:', error);
       message.error('加载Prompt类型失败');
       setPromptTypes([]); // 确保在错误情况下设置为空数组
+    }
+  };
+
+  // 加载AI配置列表
+  const loadAiConfigs = async () => {
+    try {
+      const response = await apiService.getAIConfigs();
+      setAiConfigs(response.configs || []);
+    } catch (error) {
+      console.error('加载AI配置失败:', error);
+      message.error('加载AI配置失败');
+    }
+  };
+
+  // 加载AI提供商列表
+  const loadAiProviders = async () => {
+    try {
+      const response = await apiService.getAIProviders();
+      setAiProviders(response.providers || []);
+    } catch (error) {
+      console.error('加载AI提供商失败:', error);
+      message.error('加载AI提供商失败');
     }
   };
   
@@ -424,111 +423,166 @@ const Settings: React.FC = () => {
     showUploadList: false
   };
 
-  const handleAddApiKey = () => {
-    setEditingApiKey(null);
-    apiKeyForm.resetFields();
-    setIsApiKeyModalVisible(true);
+  const handleAddAiConfig = () => {
+    setEditingAiConfig(null);
+    aiConfigForm.resetFields();
+    setIsAiConfigModalVisible(true);
   };
 
-  const handleEditApiKey = (apiKey: ApiKey) => {
-    setEditingApiKey(apiKey);
-    apiKeyForm.setFieldsValue(apiKey);
-    setIsApiKeyModalVisible(true);
+  const handleEditAiConfig = (aiConfig: AIConfig) => {
+    setEditingAiConfig(aiConfig);
+    aiConfigForm.setFieldsValue(aiConfig);
+    setIsAiConfigModalVisible(true);
   };
 
-  const handleDeleteApiKey = (id: string) => {
-    setApiKeys(apiKeys.filter(key => key.id !== id));
-    message.success('API密钥删除成功');
-  };
-
-  const handleApiKeyModalOk = async () => {
+  const handleDeleteAiConfig = async (id: number) => {
     try {
-      const values = await apiKeyForm.validateFields();
-      
-      if (editingApiKey) {
-        setApiKeys(apiKeys.map(key => 
-          key.id === editingApiKey.id 
-            ? { ...key, ...values }
-            : key
-        ));
-        message.success('API密钥更新成功');
-      } else {
-        const newApiKey: ApiKey = {
-          id: Date.now().toString(),
-          ...values,
-          status: 'active',
-          createdAt: new Date().toISOString().split('T')[0]
-        };
-        setApiKeys([...apiKeys, newApiKey]);
-        message.success('API密钥添加成功');
-      }
-      
-      setIsApiKeyModalVisible(false);
-      setEditingApiKey(null);
-      apiKeyForm.resetFields();
+      await apiService.deleteAIConfig(id);
+      message.success('AI配置删除成功');
+      loadAiConfigs();
     } catch (error) {
-      console.error('Validation failed:', error);
+      console.error('删除AI配置失败:', error);
+      message.error('删除AI配置失败');
     }
   };
 
-  const apiKeyColumns: ColumnsType<ApiKey> = [
+  const handleAiConfigModalOk = async () => {
+    try {
+      const values = await aiConfigForm.validateFields();
+      
+      if (editingAiConfig) {
+        await apiService.updateAIConfig(editingAiConfig.id, values);
+        message.success('AI配置更新成功');
+      } else {
+        await apiService.createAIConfig(values);
+        message.success('AI配置添加成功');
+      }
+      
+      setIsAiConfigModalVisible(false);
+      setEditingAiConfig(null);
+      aiConfigForm.resetFields();
+      loadAiConfigs();
+    } catch (error) {
+      console.error('保存AI配置失败:', error);
+      message.error('保存AI配置失败');
+    }
+  };
+
+  // 设置默认AI配置
+  const handleSetDefaultAiConfig = async (configId: number) => {
+    try {
+      await apiService.setDefaultAIConfig(configId);
+      message.success('默认AI配置设置成功');
+      loadAiConfigs();
+    } catch (error) {
+      console.error('设置默认AI配置失败:', error);
+      message.error('设置默认AI配置失败');
+    }
+  };
+
+  // 激活/停用AI配置
+  const handleToggleAiConfigStatus = async (configId: number, isActive: boolean) => {
+    try {
+      if (isActive) {
+        await apiService.activateAIConfig(configId);
+        message.success('AI配置已激活');
+      } else {
+        await apiService.deactivateAIConfig(configId);
+        message.success('AI配置已停用');
+      }
+      loadAiConfigs();
+    } catch (error) {
+      console.error('切换AI配置状态失败:', error);
+      message.error('切换AI配置状态失败');
+    }
+  };
+
+  const aiConfigColumns: ColumnsType<AIConfig> = [
     {
-      title: '名称',
+      title: '配置名称',
       dataIndex: 'name',
-      key: 'name'
+      key: 'name',
+      render: (name, record) => (
+        <Space>
+          {name}
+          {record.is_default && <Tag color="gold">默认</Tag>}
+        </Space>
+      )
     },
     {
       title: '提供商',
       dataIndex: 'provider',
       key: 'provider',
-      render: (provider) => (
-        <Tag color={provider === 'OpenAI' ? 'green' : 'blue'}>{provider}</Tag>
-      )
+      render: (provider) => {
+        const providerColors: Record<string, string> = {
+          openai: 'green',
+          anthropic: 'blue',
+          azure: 'cyan',
+          google: 'orange',
+          ollama: 'purple',
+          custom: 'default'
+        };
+        return <Tag color={providerColors[provider] || 'default'}>{provider.toUpperCase()}</Tag>;
+      }
+    },
+    {
+      title: '模型',
+      dataIndex: 'model_name',
+      key: 'model_name'
     },
     {
       title: 'API密钥',
-      dataIndex: 'key',
-      key: 'key',
+      dataIndex: 'api_key',
+      key: 'api_key',
       render: (key) => (
-        <Text code style={{ fontSize: '12px' }}>{key}</Text>
+        <Text code style={{ fontSize: '12px' }}>
+          {key ? `${key.substring(0, 8)}...${key.substring(key.length - 4)}` : '-'}
+        </Text>
       )
     },
     {
       title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status) => (
-        <Tag color={status === 'active' ? 'success' : 'default'}>
-          {status === 'active' ? '活跃' : '未激活'}
-        </Tag>
+      dataIndex: 'is_active',
+      key: 'is_active',
+      render: (isActive, record) => (
+        <Switch
+          checked={isActive}
+          onChange={(checked) => handleToggleAiConfigStatus(record.id, checked)}
+          checkedChildren="启用"
+          unCheckedChildren="停用"
+        />
       )
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt'
-    },
-    {
-      title: '最后使用',
-      dataIndex: 'lastUsed',
-      key: 'lastUsed',
-      render: (lastUsed) => lastUsed || '-'
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (date) => new Date(date).toLocaleDateString()
     },
     {
       title: '操作',
       key: 'action',
       render: (_, record) => (
         <Space size="small">
+          {!record.is_default && (
+            <Button 
+              type="text" 
+              size="small"
+              onClick={() => handleSetDefaultAiConfig(record.id)}
+            >
+              设为默认
+            </Button>
+          )}
           <Button 
             type="text" 
             size="small"
-            onClick={() => handleEditApiKey(record)}
+            onClick={() => handleEditAiConfig(record)}
           >
             编辑
           </Button>
           <Popconfirm
-            title="确定要删除这个API密钥吗？"
-            onConfirm={() => handleDeleteApiKey(record.id)}
+            title="确定要删除这个AI配置吗？"
+            onConfirm={() => handleDeleteAiConfig(record.id)}
             okText="确定"
             cancelText="取消"
           >
@@ -536,6 +590,7 @@ const Settings: React.FC = () => {
               type="text" 
               size="small"
               danger
+              disabled={record.is_default}
             >
               删除
             </Button>
@@ -730,19 +785,19 @@ const Settings: React.FC = () => {
               </Row>
             </Card>
             
-            <Card title="API密钥管理" style={{ marginTop: 16 }}>
+            <Card title="AI配置管理" style={{ marginTop: 16 }}>
               <div style={{ marginBottom: 16 }}>
                 <Button 
                   type="primary" 
                   icon={<PlusOutlined />}
-                  onClick={handleAddApiKey}
+                  onClick={handleAddAiConfig}
                 >
-                  添加API密钥
+                  添加AI配置
                 </Button>
               </div>
               <Table
-                columns={apiKeyColumns}
-                dataSource={apiKeys}
+                columns={aiConfigColumns}
+                dataSource={aiConfigs}
                 rowKey="id"
                 size="small"
                 pagination={false}
@@ -1189,50 +1244,128 @@ const Settings: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* API密钥编辑模态框 */}
+      {/* AI配置编辑模态框 */}
       <Modal
-        title={editingApiKey ? '编辑API密钥' : '添加API密钥'}
-        open={isApiKeyModalVisible}
-        onOk={handleApiKeyModalOk}
+        title={editingAiConfig ? '编辑AI配置' : '添加AI配置'}
+        open={isAiConfigModalVisible}
+        onOk={handleAiConfigModalOk}
         onCancel={() => {
-          setIsApiKeyModalVisible(false);
-          setEditingApiKey(null);
-          apiKeyForm.resetFields();
+          setIsAiConfigModalVisible(false);
+          setEditingAiConfig(null);
+          aiConfigForm.resetFields();
         }}
-        width={500}
+        width={600}
       >
         <Form
-          form={apiKeyForm}
+          form={aiConfigForm}
           layout="vertical"
         >
-          <Form.Item
-            name="name"
-            label="名称"
-            rules={[{ required: true, message: '请输入名称' }]}
-          >
-            <Input placeholder="请输入API密钥名称" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="name"
+                label="配置名称"
+                rules={[{ required: true, message: '请输入配置名称' }]}
+              >
+                <Input placeholder="请输入AI配置名称" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="provider"
+                label="AI提供商"
+                rules={[{ required: true, message: '请选择AI提供商' }]}
+              >
+                <Select placeholder="请选择AI提供商">
+                  {aiProviders.map(provider => (
+                    <Option key={provider.provider} value={provider.provider}>
+                      {provider.display_name}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="model_name"
+                label="模型名称"
+                rules={[{ required: true, message: '请输入模型名称' }]}
+              >
+                <Input placeholder="如: gpt-3.5-turbo" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="api_key"
+                label="API密钥"
+                rules={[{ required: true, message: '请输入API密钥' }]}
+              >
+                <Input.Password placeholder="请输入API密钥" />
+              </Form.Item>
+            </Col>
+          </Row>
           
           <Form.Item
-            name="provider"
-            label="提供商"
-            rules={[{ required: true, message: '请选择提供商' }]}
+            name="base_url"
+            label="Base URL（可选）"
           >
-            <Select placeholder="请选择API提供商">
-              <Option value="OpenAI">OpenAI</Option>
-              <Option value="Anthropic">Anthropic</Option>
-              <Option value="Google">Google</Option>
-              <Option value="Azure">Azure</Option>
-            </Select>
+            <Input placeholder="如: https://api.openai.com/v1" />
           </Form.Item>
           
-          <Form.Item
-            name="key"
-            label="API密钥"
-            rules={[{ required: true, message: '请输入API密钥' }]}
-          >
-            <Input.Password placeholder="请输入API密钥" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="temperature"
+                label="Temperature"
+              >
+                <InputNumber
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  placeholder="0.7"
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="max_tokens"
+                label="最大Token数"
+              >
+                <InputNumber
+                  min={1}
+                  max={32000}
+                  placeholder="4000"
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="is_default"
+                label="设为默认配置"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="is_active"
+                label="启用配置"
+                valuePropName="checked"
+                initialValue={true}
+              >
+                <Switch />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
