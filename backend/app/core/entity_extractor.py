@@ -4,8 +4,9 @@ from typing import List, Dict, Optional
 import random
 import re
 import json
-from app.core.config import ENTITY_TYPES, NER_PROMPT_PATH, ENTITY_VALIDATION_PROMPT_PATH
-from app.core.utils import load_prompt, call_llm
+from app.core.config import ENTITY_TYPES
+from app.core.utils import call_llm
+from app.services.prompt_service import get_ner_prompt_content, get_entity_validation_prompt_content
 
 def extract_entities_from_chunk(chunk_text: str, chunk_id: str = None) -> List[Dict]:
     """
@@ -46,8 +47,8 @@ def _extract_entities_with_llm(chunk_text: str, chunk_id: str = None) -> List[Di
         提取到的实体列表
     """
     try:
-        # 加载 NER prompt 模板
-        prompt_template = load_prompt(NER_PROMPT_PATH)
+        # 从数据库加载 NER prompt 模板
+        prompt_template = get_ner_prompt_content()
         if not prompt_template:
             print(f"❌ 无法加载 NER prompt 模板")
             return []

@@ -107,6 +107,56 @@ export interface BatchResourceRequest {
   }[];
 }
 
+// Prompt管理相关接口
+export interface Prompt {
+  id: number;
+  name: string;
+  prompt_type: 'ner' | 're' | 'entity_validation' | 'custom';
+  content: string;
+  description?: string;
+  version: string;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptCreate {
+  name: string;
+  prompt_type: 'ner' | 're' | 'entity_validation' | 'custom';
+  content: string;
+  description?: string;
+  version?: string;
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
+export interface PromptUpdate {
+  name?: string;
+  content?: string;
+  description?: string;
+  version?: string;
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
+export interface PromptListResponse {
+  prompts: Prompt[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface PromptType {
+  type: string;
+  display_name: string;
+  description: string;
+}
+
+export interface PromptTypesListResponse {
+  types: PromptType[];
+}
+
 export interface BatchResourceResponse {
   success_count: number;
   failed_count: number;
@@ -252,6 +302,35 @@ export const apiService = {
   // 图谱数据导入接口
   importGraphData: (graphId: string): Promise<{ success: boolean; message: string }> => 
     api.post(`/graphs/${graphId}/import-data`),
+
+  // Prompt管理接口
+  getPrompts: (params?: {
+    prompt_type?: string;
+    is_active?: boolean;
+    page?: number;
+    size?: number;
+  }): Promise<PromptListResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params?.prompt_type) queryParams.append('prompt_type', params.prompt_type);
+    if (params?.is_active !== undefined) queryParams.append('is_active', params.is_active.toString());
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.size) queryParams.append('size', params.size.toString());
+    return api.get(`/prompts/?${queryParams.toString()}`);
+  },
+  getPrompt: (promptId: number): Promise<Prompt> => 
+    api.get(`/prompts/${promptId}`),
+  createPrompt: (data: PromptCreate): Promise<Prompt> => 
+    api.post('/prompts/', data),
+  updatePrompt: (promptId: number, data: PromptUpdate): Promise<Prompt> => 
+    api.put(`/prompts/${promptId}`, data),
+  deletePrompt: (promptId: number): Promise<{ message: string }> => 
+    api.delete(`/prompts/${promptId}`),
+  getDefaultPrompt: (promptType: string): Promise<Prompt> => 
+    api.get(`/prompts/default/${promptType}`),
+  setDefaultPrompt: (promptId: number): Promise<{ message: string }> => 
+    api.post('/prompts/set-default', { prompt_id: promptId }),
+  getPromptTypes: (): Promise<PromptTypesListResponse> => 
+    api.get('/prompts/types/list'),
 };
 
 export default api;

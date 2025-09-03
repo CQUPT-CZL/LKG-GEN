@@ -4,8 +4,9 @@ from typing import List, Dict
 import random
 import re
 import json
-from .utils import call_llm, load_prompt
-from .config import RE_PROMPT_PATH, RELATION_TYPES
+from .utils import call_llm
+from .config import RELATION_TYPES
+from app.services.prompt_service import get_re_prompt_content
 
 def extract_relations_from_entities(entities: List[Dict], text: str = None) -> List[Dict]:
     """
@@ -57,8 +58,8 @@ def _extract_relations_with_llm(entities: List[Dict], text: str) -> List[Dict]:
         提取到的关系列表
     """
     try:
-        # 加载prompt模板
-        prompt_template = load_prompt(RE_PROMPT_PATH)
+        # 从数据库加载prompt模板
+        prompt_template = get_re_prompt_content()
         if not prompt_template:
             print("❌ 无法加载关系提取prompt模板")
             return []

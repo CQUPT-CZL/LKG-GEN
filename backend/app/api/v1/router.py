@@ -1,7 +1,7 @@
 # app/api/v1/router.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import documents, graphs, categories, entities, relations, config
+from app.api.v1.endpoints import documents, graphs, categories, entities, relations, config, prompts
 
 # 创建v1版本的主路由
 api_router = APIRouter()
@@ -41,4 +41,10 @@ api_router.include_router(
     config.router,
     prefix="/config",
     tags=["config"]
+)
+
+api_router.include_router(
+    prompts.router,
+    prefix="/prompts",
+    tags=["prompts"]
 )

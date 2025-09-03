@@ -34,11 +34,12 @@ import {
   PlusOutlined,
   ExclamationCircleOutlined,
   EditOutlined,
-  NodeIndexOutlined
+  NodeIndexOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { apiService, KnowledgeGraphConfig } from '../services/api';
+import { apiService, KnowledgeGraphConfig, Prompt, PromptCreate, PromptUpdate, PromptType, PromptTypesListResponse } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -157,10 +158,21 @@ const Settings: React.FC = () => {
   const [newEntityType, setNewEntityType] = useState('');
   const [newRelationType, setNewRelationType] = useState('');
   const [kgConfigForm] = Form.useForm();
+  
+  // Prompt管理相关状态
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [promptTypes, setPromptTypes] = useState<PromptType[]>([]);
+  const [isPromptModalVisible, setIsPromptModalVisible] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
+  const [promptForm] = Form.useForm();
+  const [selectedPromptType, setSelectedPromptType] = useState<string>('all');
+  const [promptLoading, setPromptLoading] = useState(false);
 
   useEffect(() => {
     form.setFieldsValue(config);
     loadKnowledgeGraphConfig();
+    loadPrompts();
+    loadPromptTypes();
   }, []);
   
   // 加载知识图谱配置
@@ -196,6 +208,117 @@ const Settings: React.FC = () => {
       message.error('重置知识图谱配置失败');
     }
   };
+  
+  // 加载Prompt列表
+  const loadPrompts = async () => {
+    try {
+      setPromptLoading(true);
+      const params = selectedPromptType !== 'all' ? { prompt_type: selectedPromptType } : {};
+      const response = await apiService.getPrompts(params);
+      setPrompts(response.prompts);
+    } catch (error) {
+      console.error('加载Prompt列表失败:', error);
+      message.error('加载Prompt列表失败');
+    } finally {
+      setPromptLoading(false);
+    }
+  };
+  
+  // 加载Prompt类型列表
+  const loadPromptTypes = async () => {
+    try {
+      const response: PromptTypesListResponse = await apiService.getPromptTypes();
+      // 后端返回的是 {types: [...]} 格式，需要提取 types 字段
+      setPromptTypes(response.types || []);
+    } catch (error) {
+      console.error('加载Prompt类型失败:', error);
+      message.error('加载Prompt类型失败');
+      setPromptTypes([]); // 确保在错误情况下设置为空数组
+    }
+  };
+  
+  // 创建或更新Prompt
+  const handlePromptSubmit = async () => {
+    try {
+      const values = await promptForm.validateFields();
+      if (editingPrompt) {
+        await apiService.updatePrompt(editingPrompt.id, values);
+        message.success('Prompt更新成功');
+      } else {
+        await apiService.createPrompt(values);
+        message.success('Prompt创建成功');
+      }
+      setIsPromptModalVisible(false);
+      setEditingPrompt(null);
+      promptForm.resetFields();
+      loadPrompts();
+    } catch (error) {
+      console.error('保存Prompt失败:', error);
+      message.error('保存Prompt失败');
+    }
+  };
+  
+  // 删除Prompt
+  const handleDeletePrompt = async (promptId: number) => {
+    try {
+      await apiService.deletePrompt(promptId);
+      message.success('Prompt删除成功');
+      loadPrompts();
+    } catch (error) {
+      console.error('删除Prompt失败:', error);
+      message.error('删除Prompt失败');
+    }
+  };
+  
+  // 设置默认Prompt
+  const handleSetDefaultPrompt = async (promptId: number) => {
+    try {
+      await apiService.setDefaultPrompt(promptId);
+      message.success('默认Prompt设置成功');
+      loadPrompts();
+    } catch (error) {
+      console.error('设置默认Prompt失败:', error);
+      message.error('设置默认Prompt失败');
+    }
+  };
+  
+  // 编辑Prompt
+  const handleEditPrompt = (prompt: Prompt) => {
+    setEditingPrompt(prompt);
+    promptForm.setFieldsValue({
+      name: prompt.name,
+      prompt_type: prompt.prompt_type,
+      content: prompt.content,
+      description: prompt.description,
+      version: prompt.version,
+      is_active: prompt.is_active
+    });
+    setIsPromptModalVisible(true);
+  };
+  
+  // 新建Prompt
+  const handleCreatePrompt = () => {
+    setEditingPrompt(null);
+    promptForm.resetFields();
+    promptForm.setFieldsValue({
+      is_active: true,
+      version: '1.0.0'
+    });
+    setIsPromptModalVisible(true);
+  };
+  
+  // Prompt类型筛选变化
+  const handlePromptTypeChange = (type: string) => {
+    setSelectedPromptType(type);
+    // 重新加载数据会在useEffect中处理
+  };
+  
+  // 监听Prompt类型筛选变化
+  useEffect(() => {
+    if (promptTypes.length > 0) {
+      loadPrompts();
+    }
+  }, [selectedPromptType]);
   
   // 添加实体类型
   const handleAddEntityType = () => {
@@ -804,6 +927,143 @@ const Settings: React.FC = () => {
               </Paragraph>
             </Card>
           </TabPane>
+
+          {/* Prompt管理 */}
+          <TabPane tab={<span><FileTextOutlined /> Prompt管理</span>} key="prompt-management">
+            <Card 
+              title="Prompt模板管理" 
+              extra={
+                <Space>
+                  <Select
+                    value={selectedPromptType}
+                    onChange={handlePromptTypeChange}
+                    style={{ width: 150 }}
+                    placeholder="选择类型"
+                  >
+                    <Option value="all">全部类型</Option>
+                     {promptTypes.map(type => (
+                       <Option key={type.type} value={type.type}>
+                         {type.display_name}
+                       </Option>
+                     ))}
+                  </Select>
+                  <Button 
+                    type="primary" 
+                    icon={<PlusOutlined />}
+                    onClick={handleCreatePrompt}
+                  >
+                    新建Prompt
+                  </Button>
+                </Space>
+              }
+            >
+              <Table
+                dataSource={prompts}
+                loading={promptLoading}
+                rowKey="id"
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total) => `共 ${total} 条记录`
+                }}
+                columns={[
+                  {
+                    title: '名称',
+                    dataIndex: 'name',
+                    key: 'name',
+                    width: 200,
+                    render: (text, record) => (
+                      <Space>
+                        <Text strong={record.is_default}>{text}</Text>
+                        {record.is_default && <Tag color="gold">默认</Tag>}
+                      </Space>
+                    )
+                  },
+                  {
+                    title: '类型',
+                    dataIndex: 'prompt_type',
+                    key: 'prompt_type',
+                    width: 120,
+                    render: (type) => {
+                       const typeInfo = promptTypes.find(t => t.type === type);
+                       return <Tag color="blue">{typeInfo?.display_name || type}</Tag>;
+                     }
+                  },
+                  {
+                    title: '描述',
+                    dataIndex: 'description',
+                    key: 'description',
+                    ellipsis: true,
+                    render: (text) => text || '-'
+                  },
+                  {
+                    title: '版本',
+                    dataIndex: 'version',
+                    key: 'version',
+                    width: 100
+                  },
+                  {
+                    title: '状态',
+                    dataIndex: 'is_active',
+                    key: 'is_active',
+                    width: 80,
+                    render: (isActive) => (
+                      <Tag color={isActive ? 'success' : 'default'}>
+                        {isActive ? '启用' : '禁用'}
+                      </Tag>
+                    )
+                  },
+                  {
+                    title: '更新时间',
+                    dataIndex: 'updated_at',
+                    key: 'updated_at',
+                    width: 150,
+                    render: (date) => date ? new Date(date).toLocaleString() : '-'
+                  },
+                  {
+                    title: '操作',
+                    key: 'action',
+                    width: 200,
+                    render: (_, record) => (
+                      <Space size="small">
+                        <Button 
+                          type="text" 
+                          size="small"
+                          onClick={() => handleEditPrompt(record)}
+                        >
+                          编辑
+                        </Button>
+                        {!record.is_default && (
+                          <Button 
+                            type="text" 
+                            size="small"
+                            onClick={() => handleSetDefaultPrompt(record.id)}
+                          >
+                            设为默认
+                          </Button>
+                        )}
+                        <Popconfirm
+                          title="确定要删除这个Prompt吗？"
+                          onConfirm={() => handleDeletePrompt(record.id)}
+                          okText="确定"
+                          cancelText="取消"
+                        >
+                          <Button 
+                            type="text" 
+                            size="small"
+                            danger
+                          >
+                            删除
+                          </Button>
+                        </Popconfirm>
+                      </Space>
+                    )
+                  }
+                ]}
+              />
+            </Card>
+          </TabPane>
         </Tabs>
 
         {/* 操作按钮 */}
@@ -837,6 +1097,97 @@ const Settings: React.FC = () => {
           </Space>
         </Card>
       </Form>
+
+      {/* Prompt编辑/创建模态框 */}
+      <Modal
+        title={editingPrompt ? '编辑Prompt' : '新建Prompt'}
+        open={isPromptModalVisible}
+        onOk={handlePromptSubmit}
+        onCancel={() => {
+          setIsPromptModalVisible(false);
+          setEditingPrompt(null);
+          promptForm.resetFields();
+        }}
+        width={800}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form
+          form={promptForm}
+          layout="vertical"
+          initialValues={{
+            is_active: true,
+            version: '1.0.0'
+          }}
+        >
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="name"
+                label="Prompt名称"
+                rules={[{ required: true, message: '请输入Prompt名称' }]}
+              >
+                <Input placeholder="请输入Prompt名称" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="prompt_type"
+                label="Prompt类型"
+                rules={[{ required: true, message: '请选择Prompt类型' }]}
+              >
+                <Select placeholder="请选择Prompt类型">
+                  {promptTypes.map(type => (
+                    <Option key={type.type} value={type.type}>
+                      {type.display_name}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="version"
+                label="版本号"
+                rules={[{ required: true, message: '请输入版本号' }]}
+              >
+                <Input placeholder="如: 1.0.0" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="is_active"
+                label="启用状态"
+                valuePropName="checked"
+              >
+                <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item
+            name="description"
+            label="描述"
+          >
+            <TextArea 
+              placeholder="请输入Prompt描述" 
+              rows={2}
+            />
+          </Form.Item>
+          <Form.Item
+            name="content"
+            label="Prompt内容"
+            rules={[{ required: true, message: '请输入Prompt内容' }]}
+          >
+            <TextArea 
+              placeholder="请输入Prompt模板内容" 
+              rows={8}
+              showCount
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* API密钥编辑模态框 */}
       <Modal

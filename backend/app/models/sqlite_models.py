@@ -32,6 +32,14 @@ class TripleStatusEnum(enum.Enum):
     rejected = "rejected"
 
 
+# 定义一个Python枚举类，用于Prompt类型
+class PromptTypeEnum(enum.Enum):
+    ner = "ner"  # 命名实体识别
+    re = "re"    # 关系抽取
+    entity_validation = "entity_validation"  # 实体验证
+    custom = "custom"  # 自定义类型
+
+
 class SourceDocument(Base):
     """
     源文档表模型
@@ -84,3 +92,25 @@ class PendingTriple(Base):
     status = Column(Enum(TripleStatusEnum), nullable=False, default=TripleStatusEnum.pending)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class Prompt(Base):
+    """
+    Prompt模板表模型
+    存储各种类型的prompt模板，支持版本管理和默认设置
+    """
+    __tablename__ = "prompts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)  # prompt名称
+    prompt_type = Column(Enum(PromptTypeEnum), nullable=False, index=True)  # prompt类型
+    content = Column(Text, nullable=False)  # prompt内容
+    description = Column(Text, nullable=True)  # prompt描述
+    is_default = Column(Integer, nullable=False, default=0)  # 是否为默认prompt (0=否, 1=是)
+    is_active = Column(Integer, nullable=False, default=1)  # 是否激活 (0=否, 1=是)
+    version = Column(String, nullable=False, default="1.0")  # 版本号
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # 添加唯一约束：每种类型只能有一个默认prompt
+    # 这个约束需要在数据库层面通过migration或手动创建
