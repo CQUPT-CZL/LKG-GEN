@@ -164,8 +164,14 @@ const EntityManager: React.FC = () => {
           properties: rel.properties
         }));
       
+      // 去重处理：避免center_entity和entities中的重复节点
+      const allEntities = [...entitySubgraphResponse.entities, entitySubgraphResponse.center_entity];
+      const uniqueEntities = allEntities.filter((entity, index, self) => 
+        index === self.findIndex(e => e.id === entity.id)
+      );
+      
       const subgraphData = {
-        entities: [...entitySubgraphResponse.entities, entitySubgraphResponse.center_entity],
+        entities: uniqueEntities,
         relationships: convertedRelationships
       };
       

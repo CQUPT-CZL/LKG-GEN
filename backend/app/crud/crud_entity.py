@@ -307,43 +307,74 @@ def get_entity_subgraph(driver: Driver, entity_id: str, hops: int = 1) -> Dict[s
     Args:
         driver: Neo4j驱动
         entity_id: 实体ID
-        hops: 跳数，最大为3
+        hops: 跳数，最大为10
     
     Returns:
         包含节点和关系的子图数据
     """
-    if hops != 1:
-        raise ValueError("目前只支持1跳查询")
+    if hops < 1 or hops > 10:
+        raise ValueError("跳数必须在1-10之间")
     
     with driver.session() as session:
-        # 只支持1跳查询
-        query = """
-        MATCH (center:Entity {id: $entity_id})
-        OPTIONAL MATCH (center)-[r]-(connected:Entity)
-        WITH center, collect(DISTINCT connected) as connected_entities, collect(DISTINCT r) as relations
-        RETURN {
-            center_entity: {
+        # 支持多跳查询，使用改进的路径过滤逻辑
+        query = f"""
+        // 1. 找到中心节点
+        MATCH (center:Entity {{id: $entity_id}})
+        
+        // 2. 寻找所有路径，并用WHERE子句过滤，确保路径上所有节点都是Entity类型
+        OPTIONAL MATCH path = (center)-[*1..{hops}]-(peer:Entity)
+        // 关键修正：增加这个WHERE子句
+        WHERE path IS NULL OR all(n IN nodes(path) WHERE n:Entity)
+        
+        // 3. 将所有【合法的】路径收集起来，避免UNWIND null的问题
+        WITH center, COLLECT(path) AS valid_paths
+        
+        // 4. 处理空路径的情况
+        WITH center, 
+             CASE WHEN size(valid_paths) = 0 OR valid_paths = [null] 
+                  THEN [] 
+                  ELSE valid_paths 
+             END AS filtered_paths
+        
+        // 5. 如果有有效路径，则展开；否则只返回中心节点
+        WITH center,
+             CASE WHEN size(filtered_paths) > 0
+                  THEN reduce(nodes = [], path IN filtered_paths | nodes + nodes(path))
+                  ELSE [center]
+             END AS all_path_nodes,
+             CASE WHEN size(filtered_paths) > 0
+                  THEN reduce(rels = [], path IN filtered_paths | rels + relationships(path))
+                  ELSE []
+             END AS all_path_relationships
+        
+        // 6. 去重并格式化返回
+        WITH center,
+             [n IN all_path_nodes WHERE n.id <> center.id] AS connected_entities,
+             all_path_relationships AS relationships
+        
+        RETURN {{
+            center_entity: {{
                 id: center.id,
                 name: center.name,
                 entity_type: center.entity_type,
                 description: center.description,
                 frequency: center.frequency
-            },
-            entities: [entity in connected_entities | {
+            }},
+            entities: [entity in connected_entities | {{
                 id: entity.id,
                 name: entity.name,
                 entity_type: entity.entity_type,
                 description: entity.description,
                 frequency: entity.frequency
-            }],
-            relationships: [rel in relations | {
+            }}],
+            relationships: [rel in relationships | {{
                 id: id(rel),
                 type: COALESCE(rel.relation_type, type(rel)),
                 source_id: startNode(rel).id,
                 target_id: endNode(rel).id,
                 properties: properties(rel)
-            }]
-        } as subgraph
+            }}]
+        }} as subgraph
         """
         
         result = session.run(query, entity_id=entity_id)

@@ -346,8 +346,14 @@ const GraphVisualization: React.FC = () => {
           properties: rel.properties
         }));
       
+      // 去重处理：避免center_entity和entities中的重复节点
+      const allEntities = [entitySubgraphResponse.center_entity, ...entitySubgraphResponse.entities];
+      const uniqueEntities = allEntities.filter((entity, index, self) => 
+        index === self.findIndex(e => e.id === entity.id)
+      );
+      
       const subgraphData: Subgraph = {
-        entities: [entitySubgraphResponse.center_entity, ...entitySubgraphResponse.entities],
+        entities: uniqueEntities,
         relationships: convertedRelationships
       };
       

@@ -216,25 +216,25 @@ def get_entity_subgraph(
     hops: int = 1
 ):
     """
-    获取指定实体的1跳子图
+    获取指定实体的x跳子图
     
     Args:
         entity_id: 实体ID
-        hops: 跳数，目前只支持1，默认为1
+        hops: 跳数，支持1-10跳，默认为1
     
     Returns:
         包含中心实体、相关实体和关系的子图数据
     """
     try:
         # 验证跳数范围
-        if hops != 1:
-            raise HTTPException(status_code=400, detail="目前只支持1跳查询")
+        if hops < 1 or hops > 10:
+            raise HTTPException(status_code=400, detail="跳数必须在1-10之间")
         
         # 获取子图数据
         subgraph_data = crud_entity.get_entity_subgraph(
             driver=driver,
             entity_id=entity_id,
-            hops=hops
+            hops=10
         )
         
         # 构造响应数据
