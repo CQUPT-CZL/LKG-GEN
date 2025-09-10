@@ -229,6 +229,9 @@ export interface EntityCreateRequest {
   entity_type: string;
   description?: string;
   graph_id: string;
+  document_ids?: number[];
+  chunk_ids?: string[];
+  frequency?: number;
 }
 
 export interface RelationCreateRequest {
@@ -336,7 +339,7 @@ export const apiService = {
   getEntities: (graphId: string): Promise<Entity[]> => 
     api.get(`/entities/?graph_id=${graphId}`),
   createEntity: (data: EntityCreateRequest): Promise<Entity> => 
-    api.post('/entities', data),
+    api.post('/entities/', data),
   updateEntity: (entityId: string, data: EntityCreateRequest): Promise<Entity> => 
     api.put(`/entities/${entityId}`, data),
   deleteEntity: (entityId: string): Promise<{ message: string }> => 
@@ -350,7 +353,7 @@ export const apiService = {
   getRelations: (graphId: string): Promise<Relationship[]> => 
     api.get(`/relations/?graph_id=${graphId}`),
   createRelation: (data: RelationCreateRequest): Promise<Relationship> => 
-    api.post('/relations', data),
+    api.post('/relations/', data),
   updateRelation: (relationId: string, data: Partial<RelationCreateRequest>): Promise<Relationship> => 
     api.put(`/relations/${relationId}`, data),
   deleteRelation: (relationId: string): Promise<{ message: string }> => 

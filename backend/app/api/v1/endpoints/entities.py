@@ -7,7 +7,7 @@ from typing import List
 from datetime import datetime
 from app.api import deps
 from app.schemas import entity as entity_schemas
-from app.crud import crud_entity
+from app.crud import crud_entity, crud_graph
 
 router = APIRouter()
 
@@ -56,7 +56,7 @@ def create_entity(
     创建新实体
     """
     try:
-        created_entity = crud_entity.create_entity(driver=driver, entity=entity)
+        created_entity = crud_graph.create_entity(driver=driver, entity=entity)
         return entity_schemas.Entity(
             id=created_entity["id"],
             name=created_entity["name"],
@@ -66,7 +66,8 @@ def create_entity(
             frequency=created_entity.get("frequency", 0),
             created_at=convert_neo4j_datetime(created_entity.get("created_at")),
             updated_at=convert_neo4j_datetime(created_entity.get("updated_at")),
-            chunk_ids=created_entity.get("chunk_ids", [])
+            chunk_ids=created_entity.get("chunk_ids", []),
+            document_ids=created_entity.get("document_ids", [])
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"创建实体失败: {e}")

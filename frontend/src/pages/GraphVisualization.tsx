@@ -34,7 +34,10 @@ import {
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  PlusOutlined,
+  NodeIndexOutlined,
+  LinkOutlined
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
@@ -196,6 +199,13 @@ const GraphVisualization: React.FC = () => {
   
   // 全屏状态
   const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // 浮动按钮相关状态
+  const [showFloatingMenu, setShowFloatingMenu] = useState(false);
+  const [addEntityModalVisible, setAddEntityModalVisible] = useState(false);
+  const [addRelationModalVisible, setAddRelationModalVisible] = useState(false);
+  const [addEntityForm] = Form.useForm();
+  const [addRelationForm] = Form.useForm();
 
   // 新增：根据分类列表构建树形结构（支持多级分类）
   const categoryTree: CategoryTreeNode[] = useMemo(() => {
@@ -1128,6 +1138,142 @@ const GraphVisualization: React.FC = () => {
     edgeForm.resetFields();
   };
 
+  // 浮动按钮相关处理函数
+  const handleFloatingButtonClick = () => {
+    setShowFloatingMenu(!showFloatingMenu);
+  };
+
+  const handleAddEntity = () => {
+    if (!selectedGraph) {
+      message.warning('请先选择图谱');
+      return;
+    }
+    if (!subgraph || subgraph.entities.length === 0) {
+      message.warning('图谱中至少需要有一个现有实体才能添加新实体，以避免创建孤立节点 🔗');
+      return;
+    }
+    setShowFloatingMenu(false);
+    addEntityForm.resetFields();
+    setAddEntityModalVisible(true);
+  };
+
+  const handleAddRelation = () => {
+    if (!selectedGraph) {
+      message.warning('请先选择图谱');
+      return;
+    }
+    if (!subgraph || subgraph.entities.length < 2) {
+      message.warning('至少需要2个实体才能创建关系');
+      return;
+    }
+    setShowFloatingMenu(false);
+    addRelationForm.resetFields();
+    setAddRelationModalVisible(true);
+  };
+
+  const handleAddEntitySubmit = async () => {
+    try {
+      const values = await addEntityForm.validateFields();
+      
+      // 处理document_ids：将逗号分隔的字符串转换为数字数组
+      let document_ids: number[] | undefined;
+      if (values.document_ids && values.document_ids.trim()) {
+        document_ids = values.document_ids
+          .split(',')
+          .map((id: string) => parseInt(id.trim()))
+          .filter((id: number) => !isNaN(id));
+      }
+      
+      // 处理chunk_ids：将逗号分隔的字符串转换为字符串数组
+      let chunk_ids: string[] | undefined;
+      if (values.chunk_ids && values.chunk_ids.trim()) {
+        chunk_ids = values.chunk_ids
+          .split(',')
+          .map((id: string) => id.trim())
+          .filter((id: string) => id.length > 0);
+      }
+      
+      const entityData = {
+        name: values.name,
+        entity_type: values.entity_type,
+        description: values.description || '',
+        graph_id: selectedGraph!.id,
+        document_ids,
+        chunk_ids,
+        frequency: values.frequency || 1
+      };
+
+      // 创建实体
+      const newEntity = await apiService.createEntity(entityData);
+      
+      // 创建与选定实体的关系
+      if (values.related_entity_id && values.relation_type) {
+        const relationData = {
+          source_entity_id: newEntity.id,
+          target_entity_id: values.related_entity_id,
+          relation_type: values.relation_type,
+          confidence: 1.0,
+          description: `${values.name} 与现有实体的关联关系`,
+          graph_id: selectedGraph!.id
+        };
+        
+        try {
+          await apiService.createRelation(relationData);
+          message.success('实体和关系创建成功! 🎉 新实体已与现有实体建立连接');
+        } catch (relationError) {
+          console.error('创建关系失败:', relationError);
+          message.warning('实体创建成功，但关系创建失败。请手动添加关系。');
+        }
+      } else {
+        message.success('实体创建成功! 🎉');
+      }
+      
+      setAddEntityModalVisible(false);
+      
+      // 重新加载图谱数据
+      if (selectedDocument) {
+        loadDocumentSubgraph();
+      } else if (selectedCategory) {
+        loadCategorySubgraph();
+      } else if (selectedGraph) {
+        loadGraphSubgraph();
+      }
+    } catch (error) {
+      console.error('创建实体失败:', error);
+      message.error('创建实体失败');
+    }
+  };
+
+  const handleAddRelationSubmit = async () => {
+    try {
+      const values = await addRelationForm.validateFields();
+      const relationData = {
+        source_entity_id: values.source_entity_id,
+        target_entity_id: values.target_entity_id,
+        relation_type: values.relation_type,
+        confidence: values.confidence || 1.0,
+        description: values.description || '',
+        graph_id: selectedGraph!.id
+      };
+
+      await apiService.createRelation(relationData);
+      message.success('关系创建成功! 🎉');
+      setAddRelationModalVisible(false);
+      
+      // 重新加载图谱数据
+      if (selectedDocument) {
+        loadDocumentSubgraph();
+      } else if (selectedCategory) {
+        loadCategorySubgraph();
+      } else if (selectedGraph) {
+        loadGraphSubgraph();
+      }
+    } catch (error) {
+      console.error('创建关系失败:', error);
+      message.error('创建关系失败');
+    }
+  };
+
   return (
     <div style={{ 
       padding: isFullscreen ? '0' : '24px',
@@ -1709,6 +1855,266 @@ const GraphVisualization: React.FC = () => {
           </div>
         </div>
       </Drawer>
+
+      {/* 浮动添加按钮 */}
+      <div style={{
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        zIndex: 1000
+      }}>
+        {/* 浮动菜单选项 */}
+        {showFloatingMenu && (
+          <div style={{
+            position: 'absolute',
+            bottom: '70px',
+            right: '0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <Button
+              type="primary"
+              icon={<NodeIndexOutlined />}
+              onClick={handleAddEntity}
+              style={{
+                borderRadius: '20px',
+                height: '40px',
+                paddingLeft: '16px',
+                paddingRight: '16px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+              }}
+            >
+              ➕ 添加实体
+            </Button>
+            <Button
+              type="primary"
+              icon={<LinkOutlined />}
+              onClick={handleAddRelation}
+              style={{
+                borderRadius: '20px',
+                height: '40px',
+                paddingLeft: '16px',
+                paddingRight: '16px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+              }}
+            >
+              🔗 添加关系
+            </Button>
+          </div>
+        )}
+        
+        {/* 主浮动按钮 */}
+        <Button
+          type="primary"
+          shape="circle"
+          size="large"
+          icon={<PlusOutlined />}
+          onClick={handleFloatingButtonClick}
+          style={{
+            width: '56px',
+            height: '56px',
+            fontSize: '20px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            transform: showFloatingMenu ? 'rotate(45deg)' : 'rotate(0deg)',
+            transition: 'transform 0.3s ease'
+          }}
+        />
+      </div>
+
+      {/* 添加实体模态框 */}
+      <Modal
+        title="➕ 添加实体"
+        open={addEntityModalVisible}
+        onOk={handleAddEntitySubmit}
+        onCancel={() => setAddEntityModalVisible(false)}
+        okText="创建"
+        cancelText="取消"
+        width={500}
+      >
+        <Form
+          form={addEntityForm}
+          layout="vertical"
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item
+            label="实体名称"
+            name="name"
+            rules={[{ required: true, message: '请输入实体名称' }]}
+          >
+            <Input placeholder="请输入实体名称" />
+          </Form.Item>
+          
+          <Form.Item
+            label="实体类型"
+            name="entity_type"
+            rules={[{ required: true, message: '请选择实体类型' }]}
+          >
+            <Select placeholder="请选择实体类型" showSearch>
+              {entityTypes.map(type => (
+                <Option key={type} value={type}>{type}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label="关联现有实体"
+            name="related_entity_id"
+            rules={[{ required: true, message: '请选择要关联的现有实体' }]}
+            tooltip="新实体将与选定的现有实体建立关系，避免成为孤立节点"
+          >
+            <Select placeholder="请选择要关联的现有实体" showSearch>
+              {subgraph?.entities.map(entity => (
+                <Option key={entity.id} value={entity.id}>
+                  {entity.name} ({entity.entity_type})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label="关系类型"
+            name="relation_type"
+            rules={[{ required: true, message: '请选择关系类型' }]}
+            tooltip="新实体与选定实体之间的关系类型"
+          >
+            <Select placeholder="请选择关系类型" showSearch>
+              {relationshipTypes.map(type => (
+                <Option key={type} value={type}>{type}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label="描述"
+            name="description"
+          >
+            <Input.TextArea 
+              rows={3} 
+              placeholder="请输入实体描述（可选）" 
+            />
+          </Form.Item>
+          
+          <Form.Item
+            label="关联文档ID"
+            name="document_ids"
+            tooltip="可选：输入关联的文档ID，多个ID用逗号分隔"
+          >
+            <Input placeholder="例如：1,2,3" />
+          </Form.Item>
+          
+          <Form.Item
+            label="分块ID"
+            name="chunk_ids"
+            tooltip="可选：输入关联的分块ID，多个ID用逗号分隔"
+          >
+            <Input placeholder="例如：chunk1,chunk2,chunk3" />
+          </Form.Item>
+          
+          <Form.Item
+            label="频次"
+            name="frequency"
+            initialValue={1}
+            tooltip="实体在文档中出现的频次"
+          >
+            <Slider
+              min={1}
+              max={100}
+              marks={{
+                1: '1',
+                25: '25',
+                50: '50',
+                75: '75',
+                100: '100'
+              }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 添加关系模态框 */}
+      <Modal
+        title="🔗 添加关系"
+        open={addRelationModalVisible}
+        onOk={handleAddRelationSubmit}
+        onCancel={() => setAddRelationModalVisible(false)}
+        okText="创建"
+        cancelText="取消"
+        width={500}
+      >
+        <Form
+          form={addRelationForm}
+          layout="vertical"
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item
+            label="源实体"
+            name="source_entity_id"
+            rules={[{ required: true, message: '请选择源实体' }]}
+          >
+            <Select placeholder="请选择源实体" showSearch>
+              {subgraph?.entities.map(entity => (
+                <Option key={entity.id} value={entity.id}>
+                  {entity.name} ({entity.entity_type})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label="目标实体"
+            name="target_entity_id"
+            rules={[{ required: true, message: '请选择目标实体' }]}
+          >
+            <Select placeholder="请选择目标实体" showSearch>
+              {subgraph?.entities.map(entity => (
+                <Option key={entity.id} value={entity.id}>
+                  {entity.name} ({entity.entity_type})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label="关系类型"
+            name="relation_type"
+            rules={[{ required: true, message: '请选择关系类型' }]}
+          >
+            <Select placeholder="请选择关系类型" showSearch>
+              {relationshipTypes.map(type => (
+                <Option key={type} value={type}>{type}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label="置信度"
+            name="confidence"
+            initialValue={1.0}
+          >
+            <Slider
+              min={0}
+              max={1}
+              step={0.1}
+              marks={{
+                0: '0',
+                0.5: '0.5',
+                1: '1.0'
+              }}
+            />
+          </Form.Item>
+          
+          <Form.Item
+            label="描述"
+            name="description"
+          >
+            <Input.TextArea 
+              rows={4} 
+              placeholder="请输入关系描述（可选）" 
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
     </div>
   );
