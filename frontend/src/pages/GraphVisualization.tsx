@@ -164,13 +164,16 @@ const GraphVisualization: React.FC = () => {
   const [edgeLength, setEdgeLength] = useState(50);
   const [showLabels, setShowLabels] = useState(true);
   const [physics, setPhysics] = useState(true);
-  const [mergeMode, setMergeMode] = useState(false);
-  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
-  const [mergeDrawerVisible, setMergeDrawerVisible] = useState(false);
   // 点击节点进入子图模式开关（默认开启）
   const [clickToSubgraph, setClickToSubgraph] = useState<boolean>(true);
+  
+  // 拖拽合并相关状态
+  const [dragMergeVisible, setDragMergeVisible] = useState(false);
+  const [dragSourceEntity, setDragSourceEntity] = useState<string | null>(null);
+  const [dragTargetEntity, setDragTargetEntity] = useState<string | null>(null);
   const [mergedName, setMergedName] = useState('');
   const [mergedDescription, setMergedDescription] = useState('');
+  
   const [isEditingEntity, setIsEditingEntity] = useState(false);
   const [isEditingEdge, setIsEditingEdge] = useState(false);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
@@ -179,6 +182,13 @@ const GraphVisualization: React.FC = () => {
   const [edgeForm] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
+  
+  // 拖拽相关的ref变量
+  const dragStartTime = useRef<number | null>(null);
+  const dragStartNode = useRef<string | null>(null);
+  const dragHoverTimer = useRef<NodeJS.Timeout | null>(null);
+  const currentHoverNode = useRef<string | null>(null);
+  const dragCheckThrottle = useRef<NodeJS.Timeout | null>(null);
   
   // 实体子图相关状态
   const [entitySubgraphMode, setEntitySubgraphMode] = useState(false);
@@ -414,7 +424,9 @@ const GraphVisualization: React.FC = () => {
   };
 
   const buildNetworkData = () => {
-    if (!subgraph) return;
+    if (!subgraph) {
+      return;
+    }
 
     const nodes: GraphNode[] = subgraph.entities.map(entity => {
       const nodeType: string = (entity.entity_type as string) || (entity.properties?.entity_type as string) || 'Unknown';
@@ -461,8 +473,7 @@ const GraphVisualization: React.FC = () => {
       const relType = (anyRel.properties?.relation_type ?? anyRel.relation_type ?? anyRel.type ?? '') as string;
       const description = anyRel.description || anyRel.properties?.description || '';
       
-      console.log('Edge data:', { id: anyRel.id, fromId, toId, relType, description, anyRel });
-      console.log('Final edge object:', { id: (anyRel.id ?? '').toString(), from: fromId, to: toId, label: relType, type: relType });
+
       
       const titleText = description ? `关系类型: ${relType}\n描述: ${description}` : `关系类型: ${relType}`;
       
@@ -480,7 +491,6 @@ const GraphVisualization: React.FC = () => {
       } as GraphEdge;
     });
 
-    console.log('Setting network data - edges:', edges.map(e => ({ id: e.id, label: e.label, type: e.type })));
     setNetworkData({ nodes, edges });
     calculateStats(nodes, edges);
   };
@@ -550,7 +560,9 @@ const GraphVisualization: React.FC = () => {
   };
 
   const initializeNetwork = () => {
-    if (!networkRef.current || !networkData) return;
+    if (!networkRef.current || !networkData) {
+      return;
+    }
 
     const options: Options = {
       nodes: {
@@ -632,6 +644,9 @@ const GraphVisualization: React.FC = () => {
         selectConnectedEdges: true,
         multiselect: true,
         tooltipDelay: 200,
+        dragNodes: true,
+        dragView: true,
+        zoomView: true,
         keyboard: {
           enabled: true
         }
@@ -644,7 +659,7 @@ const GraphVisualization: React.FC = () => {
         }
       },
       manipulation: {
-        enabled: true, // 允许用户编辑图形
+        enabled: false, // 禁用编辑模式以支持拖拽合并功能
       },
     };
 
@@ -679,10 +694,7 @@ const GraphVisualization: React.FC = () => {
         const nodes = networkData.nodes as GraphNode[];
         const node = nodes.find(n => n.id === nodeId);
         if (node) {
-          if (mergeMode) {
-            // 合并模式下处理实体选择
-            handleEntitySelection(nodeId);
-          } else if (clickToSubgraph) {
+          if (clickToSubgraph) {
             // 点击进入该节点的1跳子图视图
             loadEntitySubgraph(nodeId);
           } else {
@@ -692,7 +704,7 @@ const GraphVisualization: React.FC = () => {
             setDrawerVisible(true);
           }
         }
-      } else if (params.edges.length > 0 && !mergeMode) {
+      } else if (params.edges.length > 0) {
         const edgeId = params.edges[0];
         const edges = networkData.edges as GraphEdge[];
         const edge = edges.find(e => e.id === edgeId);
@@ -729,6 +741,112 @@ const GraphVisualization: React.FC = () => {
           setDrawerVisible(true);
         }
       }
+    });
+
+    // 拖拽事件监听器
+    networkInstance.current.on('dragStart', (params: any) => {
+      dragStartTime.current = Date.now();
+      if (params.nodes && params.nodes.length > 0) {
+        dragStartNode.current = params.nodes[0];
+      }
+    });
+
+    networkInstance.current.on('dragging', (params: any) => {
+      if (dragStartNode.current && params.pointer) {
+        // 节流处理，每100ms检测一次
+        if (dragCheckThrottle.current) {
+          clearTimeout(dragCheckThrottle.current);
+        }
+        
+        dragCheckThrottle.current = setTimeout(() => {
+          if (!networkInstance.current || !dragStartNode.current) return;
+          
+          // 获取当前拖拽的节点位置
+          let nodeId = null;
+          
+          // 优先使用DOM坐标，通常更准确
+          if (params.pointer.DOM) {
+            nodeId = networkInstance.current.getNodeAt(params.pointer.DOM);
+          }
+          
+          // 如果DOM坐标检测失败，尝试canvas坐标
+          if (!nodeId && params.pointer.canvas) {
+            nodeId = networkInstance.current.getNodeAt(params.pointer.canvas);
+          }
+          
+          // 转换为字符串以便比较
+          const targetNodeId = nodeId ? String(nodeId) : null;
+          
+          // 只有当检测到有效的目标节点且不是源节点时才处理
+          if (targetNodeId && targetNodeId !== dragStartNode.current) {
+            // 如果是新的hover节点
+            if (currentHoverNode.current !== targetNodeId) {
+              // 清除之前的定时器
+              if (dragHoverTimer.current) {
+                clearTimeout(dragHoverTimer.current);
+                dragHoverTimer.current = null;
+              }
+              
+              // 更新当前hover节点
+              currentHoverNode.current = targetNodeId;
+              
+              // 高亮目标节点 - 避免使用focus防止中断拖拽
+              if (networkInstance.current) {
+                // 先取消所有选择
+                networkInstance.current.unselectAll();
+                // 选择目标节点进行高亮
+                networkInstance.current.selectNodes([targetNodeId]);
+              }
+              
+              // 设置新的定时器，2秒后触发合并
+              dragHoverTimer.current = setTimeout(() => {
+                if (dragStartNode.current && currentHoverNode.current === targetNodeId) {
+                  handleDragMerge(dragStartNode.current, currentHoverNode.current);
+                }
+              }, 2000);
+            }
+          } else {
+            // 如果不在有效节点上，清除hover状态
+            if (currentHoverNode.current) {
+              // 取消选择
+              if (networkInstance.current) {
+                networkInstance.current.unselectAll();
+              }
+              currentHoverNode.current = null;
+            }
+            
+            // 清除定时器
+            if (dragHoverTimer.current) {
+              clearTimeout(dragHoverTimer.current);
+              dragHoverTimer.current = null;
+            }
+          }
+        }, 100);
+      }
+    });
+
+    networkInstance.current.on('dragEnd', (params: any) => {
+      // 清除所有定时器和状态
+      if (dragHoverTimer.current) {
+        clearTimeout(dragHoverTimer.current);
+        dragHoverTimer.current = null;
+      }
+      
+      if (dragCheckThrottle.current) {
+        clearTimeout(dragCheckThrottle.current);
+        dragCheckThrottle.current = null;
+      }
+      
+      // 清除hover状态
+      if (currentHoverNode.current) {
+        if (networkInstance.current) {
+          networkInstance.current.unselectAll();
+        }
+        currentHoverNode.current = null;
+      }
+      
+      dragStartTime.current = null;
+      dragStartNode.current = null;
     });
   };
 
@@ -787,66 +905,35 @@ const GraphVisualization: React.FC = () => {
     setIsFullscreen(!isFullscreen);
   };
 
-
-
-  // 实体合并相关函数
-  const handleMergeMode = (enabled: boolean) => {
-    setMergeMode(enabled);
-    setSelectedEntities([]);
-    if (networkInstance.current) {
-      if (enabled) {
-        message.info('合并模式已开启，请选择两个要合并的实体节点');
-      } else {
-        networkInstance.current.unselectAll();
-        message.info('合并模式已关闭');
-      }
-    }
-  };
-
-  const handleEntitySelection = (nodeId: string) => {
-    if (!mergeMode) return;
-    
-    const newSelection = [...selectedEntities];
-    const index = newSelection.indexOf(nodeId);
-    
-    if (index > -1) {
-      // 取消选择
-      newSelection.splice(index, 1);
-    } else {
-      // 添加选择
-      if (newSelection.length >= 2) {
-        message.warning('最多只能选择两个实体进行合并');
-        return;
-      }
-      newSelection.push(nodeId);
+  // 拖拽合并相关函数
+  const handleDragMerge = (sourceEntityId: string, targetEntityId: string) => {
+    if (sourceEntityId === targetEntityId) {
+      message.warning('不能将实体拖拽到自己身上');
+      return;
     }
     
-    setSelectedEntities(newSelection);
+    const nodes = networkData.nodes as GraphNode[];
+    const targetEntity = nodes.find(n => n.id === targetEntityId);
     
-    if (newSelection.length === 2) {
-      // 准备合并
-      const nodes = networkData.nodes as GraphNode[];
-      const sourceEntity = nodes.find(n => n.id === newSelection[0]);
-      const targetEntity = nodes.find(n => n.id === newSelection[1]);
-      
-      if (sourceEntity && targetEntity) {
+    if (targetEntity) {
+        setDragSourceEntity(sourceEntityId);
+        setDragTargetEntity(targetEntityId);
         setMergedName(targetEntity.label);
         setMergedDescription('');
-        setMergeDrawerVisible(true);
+        setDragMergeVisible(true);
       }
-    }
   };
 
-  const executeMerge = async () => {
-    if (selectedEntities.length !== 2) {
-      message.error('请选择两个实体进行合并');
+  const executeDragMerge = async () => {
+    if (!dragSourceEntity || !dragTargetEntity) {
+      message.error('请选择要合并的实体');
       return;
     }
 
     try {
       const mergeRequest = {
-        source_entity_id: selectedEntities[0],
-        target_entity_id: selectedEntities[1],
+        source_entity_id: dragSourceEntity,
+        target_entity_id: dragTargetEntity,
         merged_name: mergedName || undefined,
         merged_description: mergedDescription || undefined
       };
@@ -855,20 +942,22 @@ const GraphVisualization: React.FC = () => {
       
       if (response.success) {
         message.success(response.message);
-        setMergeDrawerVisible(false);
-        setMergeMode(false);
-        setSelectedEntities([]);
+        setDragMergeVisible(false);
+        setDragSourceEntity(null);
+        setDragTargetEntity(null);
         setMergedName('');
         setMergedDescription('');
         
-        // 重新加载图谱数据
-        if (selectedDocument) {
-          loadDocumentSubgraph();
-        } else if (selectedCategory) {
-          loadCategorySubgraph();
-        } else if (selectedGraph) {
-          loadGraphSubgraph();
-        }
+        // 延迟重新加载图谱数据，避免中断拖拽操作
+        setTimeout(() => {
+          if (selectedDocument) {
+            loadDocumentSubgraph();
+          } else if (selectedCategory) {
+            loadCategorySubgraph();
+          } else if (selectedGraph) {
+            loadGraphSubgraph();
+          }
+        }, 500); // 延迟500ms重新加载
       } else {
         message.error('合并失败: ' + response.message);
       }
@@ -878,15 +967,17 @@ const GraphVisualization: React.FC = () => {
     }
   };
 
-  const cancelMerge = () => {
-    setMergeDrawerVisible(false);
-    setSelectedEntities([]);
+  const cancelDragMerge = () => {
+    setDragMergeVisible(false);
+    setDragSourceEntity(null);
+    setDragTargetEntity(null);
     setMergedName('');
     setMergedDescription('');
-    if (networkInstance.current) {
-      networkInstance.current.unselectAll();
-    }
   };
+
+
+
+
 
   // 实体编辑相关函数
   const handleEditEntity = () => {
@@ -1169,14 +1260,6 @@ const GraphVisualization: React.FC = () => {
                       </Tooltip>
                       <Tooltip title="下载图片">
                         <Button icon={<DownloadOutlined />} onClick={handleDownload} />
-                      </Tooltip>
-                      <Tooltip title="实体合并">
-                        <Button 
-                          type={mergeMode ? 'primary' : 'default'}
-                          onClick={() => handleMergeMode(!mergeMode)}
-                        >
-                          {mergeMode ? '🔗 合并中' : '🔗 合并'}
-                        </Button>
                       </Tooltip>
                       <Tooltip title="设置">
                         <Button icon={<SettingOutlined />} onClick={() => setDrawerVisible(true)} />
@@ -1569,82 +1652,64 @@ const GraphVisualization: React.FC = () => {
         )}
       </Drawer>
 
-      {/* 实体合并抽屉 */}
+      {/* 拖拽合并抽屉 */}
       <Drawer
         title="实体合并"
         placement="right"
-        onClose={cancelMerge}
-        open={mergeDrawerVisible}
+        onClose={cancelDragMerge}
+        open={dragMergeVisible}
         width={400}
-        footer={
-          <div style={{ textAlign: 'right' }}>
-            <Space>
-              <Button onClick={cancelMerge}>取消</Button>
-              <Button type="primary" onClick={executeMerge}>
-                确认合并
-              </Button>
-            </Space>
-          </div>
+        extra={
+          <Space>
+            <Button onClick={cancelDragMerge}>取消</Button>
+            <Button type="primary" onClick={executeDragMerge}>确认合并</Button>
+          </Space>
         }
       >
-        {selectedEntities.length === 2 && (
-          <div>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>合并说明：</Text>
-              <Paragraph>
-                将把第一个实体合并到第二个实体中，第一个实体将被删除，所有相关的关系和属性将转移到第二个实体。
-              </Paragraph>
-            </div>
-            
-            <Divider />
-            
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>源实体（将被删除）：</Text>
-              <div style={{ padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: 8 }}>
-                <Text>{(() => {
-                  const nodes = networkData.nodes as GraphNode[];
-                  const sourceEntity = nodes.find(n => n.id === selectedEntities[0]);
-                  return sourceEntity?.label || selectedEntities[0];
-                })()}</Text>
-              </div>
-            </div>
-            
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>目标实体（保留）：</Text>
-              <div style={{ padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', marginTop: 8 }}>
-                <Text>{(() => {
-                  const nodes = networkData.nodes as GraphNode[];
-                  const targetEntity = nodes.find(n => n.id === selectedEntities[1]);
-                  return targetEntity?.label || selectedEntities[1];
-                })()}</Text>
-              </div>
-            </div>
-            
-            <Divider />
-            
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>合并后名称：</Text>
-              <Input
-                value={mergedName}
-                onChange={(e) => setMergedName(e.target.value)}
-                placeholder="输入合并后的实体名称"
-                style={{ marginTop: 8 }}
-              />
-            </div>
-            
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>合并后描述：</Text>
-              <Input.TextArea
-                value={mergedDescription}
-                onChange={(e) => setMergedDescription(e.target.value)}
-                placeholder="输入合并后的实体描述（可选）"
-                rows={3}
-                style={{ marginTop: 8 }}
-              />
-            </div>
+        <div style={{ padding: '16px 0' }}>
+          <Paragraph>
+            <Text strong>源实体: </Text>
+            <Text>{(() => {
+              const nodes = networkData.nodes as GraphNode[];
+              const sourceNode = nodes.find(node => node.id === dragSourceEntity);
+              return sourceNode ? `${sourceNode.label} (${dragSourceEntity})` : dragSourceEntity;
+            })()}</Text>
+          </Paragraph>
+          
+          <Paragraph>
+            <Text strong>目标实体: </Text>
+            <Text>{(() => {
+              const nodes = networkData.nodes as GraphNode[];
+              const targetNode = nodes.find(node => node.id === dragTargetEntity);
+              return targetNode ? `${targetNode.label} (${dragTargetEntity})` : dragTargetEntity;
+            })()}</Text>
+          </Paragraph>
+          
+          <Divider />
+          
+          <div style={{ marginBottom: 16 }}>
+            <Text strong>合并后名称:</Text>
+            <Input
+              value={mergedName}
+              onChange={(e) => setMergedName(e.target.value)}
+              placeholder="请输入合并后的实体名称"
+              style={{ marginTop: 8 }}
+            />
           </div>
-        )}
+          
+          <div>
+            <Text strong>合并后描述:</Text>
+            <Input.TextArea
+              value={mergedDescription}
+              onChange={(e) => setMergedDescription(e.target.value)}
+              placeholder="请输入合并后的实体描述"
+              rows={4}
+              style={{ marginTop: 8 }}
+            />
+          </div>
+        </div>
       </Drawer>
+
     </div>
   );
 };
