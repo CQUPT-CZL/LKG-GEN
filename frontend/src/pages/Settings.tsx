@@ -270,9 +270,9 @@ const Settings: React.FC = () => {
   };
   
   // 设置默认Prompt
-  const handleSetDefaultPrompt = async (promptId: number) => {
+  const handleSetDefaultPrompt = async (promptId: number, promptType: string) => {
     try {
-      await apiService.setDefaultPrompt(promptId);
+      await apiService.setDefaultPrompt(promptId, promptType);
       message.success('默认Prompt设置成功');
       loadPrompts();
     } catch (error) {
@@ -725,6 +725,27 @@ const Settings: React.FC = () => {
                 关系类型用于标识节点之间的连接关系（如属于、位于、合作等）。
               </Text>
             </Paragraph>
+            
+            {/* 保存和重置按钮 */}
+            <div style={{ marginTop: 24, textAlign: 'center' }}>
+              <Space>
+                <Button 
+                  type="primary" 
+                  icon={<SaveOutlined />}
+                  onClick={saveKnowledgeGraphConfig}
+                  size="large"
+                >
+                  保存配置
+                </Button>
+                <Button 
+                  icon={<ReloadOutlined />}
+                  onClick={resetKnowledgeGraphConfig}
+                  size="large"
+                >
+                  重置为默认
+                </Button>
+              </Space>
+            </div>
           </TabPane>
 
           {/* Prompt管理 */}
@@ -837,7 +858,7 @@ const Settings: React.FC = () => {
                           <Button 
                             type="text" 
                             size="small"
-                            onClick={() => handleSetDefaultPrompt(record.id)}
+                            onClick={() => handleSetDefaultPrompt(record.id, record.prompt_type)}
                           >
                             设为默认
                           </Button>

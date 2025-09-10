@@ -168,32 +168,47 @@ def _parse_llm_response(content: str) -> Any:
     try:
         # 先尝试直接解析
         return json.loads(content)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"❌ 直接JSON解析失败: {e}")
+        print(f"📍 错误位置: 第{e.lineno}行, 第{e.colno}列")
+        print(f"📝 错误消息: {e.msg}")
+        
         # 如果直接解析失败，尝试提取JSON部分
         try:
             # 查找JSON代码块（支持数组和对象）
             json_match = re.search(r'```json\s*([\[{].*?[\]}])\s*```', content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
+                print(f"🔍 尝试解析JSON代码块: {json_str[:100]}...")
                 return json.loads(json_str)
             
             # 查找数组格式的JSON
             array_match = re.search(r'\[.*?\]', content, re.DOTALL)
             if array_match:
                 json_str = array_match.group(0)
+                print(f"🔍 尝试解析数组格式: {json_str[:100]}...")
                 return json.loads(json_str)
             
             # 查找花括号包围的内容
             brace_match = re.search(r'{.*}', content, re.DOTALL)
             if brace_match:
                 json_str = brace_match.group(0)
+                print(f"🔍 尝试解析对象格式: {json_str[:100]}...")
                 return json.loads(json_str)
                 
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e2:
+            print(f"❌ 提取JSON部分解析也失败: {e2}")
+            print(f"📍 提取部分错误位置: 第{e2.lineno}行, 第{e2.colno}列")
         
-        # 如果都失败了，返回原始文本
-        print(f"⚠️ LLM响应不是有效的JSON格式: {content[:200]}...")
+        # 如果都失败了，返回原始文本并显示详细信息
+        print(f"⚠️ LLM响应不是有效的JSON格式")
+        print(f"📏 响应长度: {len(content)} 字符")
+        print(f"📄 完整响应内容:")
+        print(f"{'='*50}")
+        print(content)
+        print(f"{'='*50}")
+        print(f"🔤 响应前200字符: {content[:200]}...")
+        print(f"🔤 响应后200字符: ...{content[-200:]}")
         return content
 
 

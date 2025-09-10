@@ -384,8 +384,8 @@ export const apiService = {
     api.delete(`/prompts/${promptId}`),
   getDefaultPrompt: (promptType: string): Promise<Prompt> => 
     api.get(`/prompts/default/${promptType}`),
-  setDefaultPrompt: (promptId: number): Promise<{ message: string }> => 
-    api.post('/prompts/set-default', { prompt_id: promptId }),
+  setDefaultPrompt: (promptId: number, promptType: string): Promise<{ message: string }> => 
+    api.post('/prompts/set-default', { prompt_id: promptId, prompt_type: promptType }),
   getPromptTypes: (): Promise<PromptTypesListResponse> => 
     api.get('/prompts/types/list'),
 
