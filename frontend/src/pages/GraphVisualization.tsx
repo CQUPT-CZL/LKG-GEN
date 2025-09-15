@@ -200,6 +200,9 @@ const GraphVisualization: React.FC = () => {
   // 全屏状态
   const [isFullscreen, setIsFullscreen] = useState(false);
   
+  // 文档内容状态
+  const [documentContent, setDocumentContent] = useState<string>('');
+  
   // 浮动按钮相关状态
   const [showFloatingMenu, setShowFloatingMenu] = useState(false);
   const [addEntityModalVisible, setAddEntityModalVisible] = useState(false);
@@ -330,6 +333,18 @@ const GraphVisualization: React.FC = () => {
     } catch (error) {
       console.error('加载文档失败:', error);
       message.error('加载文档失败');
+    }
+  };
+
+  // 加载文档内容
+  const loadDocumentContent = async (documentId: number) => {
+    try {
+      const document = await apiService.getDocument(documentId);
+      setDocumentContent(document.content || '');
+    } catch (error) {
+      console.error('加载文档内容失败:', error);
+      message.error('加载文档内容失败');
+      setDocumentContent('');
     }
   };
 
@@ -1463,6 +1478,64 @@ const GraphVisualization: React.FC = () => {
                     </div>
                   </div>
                 </Card>
+                
+                {/* 文档选择和内容展示卡片 */}
+                {selectedGraph && (
+                  <Card size="small" title="📄 文档内容" style={{ marginTop: 16 }}>
+                    <div style={{ marginBottom: 16 }}>
+                      <Select
+                        placeholder="选择文档查看内容"
+                        style={{ width: '100%' }}
+                        value={selectedDocument?.id}
+                        onChange={(value) => {
+                          const doc = documents.find(d => d.id === value);
+                          setSelectedDocument(doc || null);
+                          if (doc) {
+                            loadDocumentContent(doc.id);
+                          } else {
+                            setDocumentContent('');
+                          }
+                        }}
+                        allowClear
+                      >
+                        {documents.map(doc => (
+                          <Option key={doc.id} value={doc.id}>
+                            {doc.filename}
+                          </Option>
+                        ))}
+                      </Select>
+                    </div>
+                    
+                    {documentContent && (
+                      <div 
+                        style={{ 
+                          maxHeight: '300px', 
+                          overflow: 'auto', 
+                          padding: '12px',
+                          backgroundColor: '#f5f5f5',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          lineHeight: '1.5',
+                          whiteSpace: 'pre-wrap'
+                        }}
+                      >
+                        {documentContent}
+                      </div>
+                    )}
+                    
+                    {!documentContent && selectedDocument && (
+                      <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                        📝 暂无内容
+                      </div>
+                    )}
+                    
+                    {!selectedDocument && (
+                      <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                        👆 请选择文档查看内容
+                      </div>
+                    )}
+                  </Card>
+                )}
                 
                 <Card size="small" title="视图控制" style={{ marginTop: 16 }}>
                   <div style={{ marginBottom: 16 }}>
