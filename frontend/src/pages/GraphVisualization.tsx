@@ -1153,6 +1153,32 @@ const GraphVisualization: React.FC = () => {
     edgeForm.resetFields();
   };
 
+  // 删除关系函数
+  const handleDeleteEdge = async (relationId: string) => {
+    if (!selectedGraph) return;
+    
+    try {
+      await apiService.deleteRelation(relationId);
+      message.success('关系删除成功! 🎉');
+      
+      // 关闭侧边栏
+      setSelectedEdge(null);
+      setIsEditingEdge(false);
+      
+      // 重新加载图谱数据以更新可视化
+      if (selectedDocument) {
+        loadDocumentSubgraph();
+      } else if (selectedCategory) {
+        loadCategorySubgraph();
+      } else if (selectedGraph) {
+        loadGraphSubgraph();
+      }
+    } catch (error) {
+      console.error('删除关系失败:', error);
+      message.error('删除关系失败');
+    }
+  };
+
   // 浮动按钮相关处理函数
   const handleFloatingButtonClick = () => {
     setShowFloatingMenu(!showFloatingMenu);
@@ -1659,6 +1685,13 @@ const GraphVisualization: React.FC = () => {
               <Space>
                 <Button onClick={handleCancelEditEdge} icon={<CloseOutlined />}>
                   取消
+                </Button>
+                <Button 
+                  danger 
+                  onClick={() => handleDeleteEdge(selectedEdge.id)} 
+                  icon={<DeleteOutlined />}
+                >
+                  删除
                 </Button>
                 <Button type="primary" onClick={handleSaveEdge} icon={<SaveOutlined />}>
                   保存
