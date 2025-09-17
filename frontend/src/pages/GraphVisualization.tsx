@@ -96,11 +96,11 @@ const hslToRgb = (hsl: string): { r: number; g: number; b: number } | null => {
   let l = parseInt(match[3], 10) / 100;
 
   let c = (1 - Math.abs(2 * l - 1)) * s,
-      x = c * (1 - Math.abs((h / 60) % 2 - 1)),
-      m = l - c/2,
-      r = 0,
-      g = 0,
-      b = 0;
+    x = c * (1 - Math.abs((h / 60) % 2 - 1)),
+    m = l - c / 2,
+    r = 0,
+    g = 0,
+    b = 0;
 
   if (0 <= h && h < 60) {
     r = c; g = x; b = 0;
@@ -138,7 +138,7 @@ const lightenColor = (color: string, percent: number): string => {
   if (!rgb) return color;
 
   const amount = Math.round(2.55 * percent * 100);
-  
+
   const r = Math.min(255, rgb.r + amount);
   const g = Math.min(255, rgb.g + amount);
   const b = Math.min(255, rgb.b + amount);
@@ -169,14 +169,14 @@ const GraphVisualization: React.FC = () => {
   const [physics, setPhysics] = useState(true);
   // 点击节点进入子图模式开关（默认开启）
   const [clickToSubgraph, setClickToSubgraph] = useState<boolean>(true);
-  
+
   // 拖拽合并相关状态
   const [dragMergeVisible, setDragMergeVisible] = useState(false);
   const [dragSourceEntity, setDragSourceEntity] = useState<string | null>(null);
   const [dragTargetEntity, setDragTargetEntity] = useState<string | null>(null);
   const [mergedName, setMergedName] = useState('');
   const [mergedDescription, setMergedDescription] = useState('');
-  
+
   const [isEditingEntity, setIsEditingEntity] = useState(false);
   const [isEditingEdge, setIsEditingEdge] = useState(false);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
@@ -185,24 +185,25 @@ const GraphVisualization: React.FC = () => {
   const [edgeForm] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
-  
+
   // 拖拽相关的ref变量
   const dragStartTime = useRef<number | null>(null);
   const dragStartNode = useRef<string | null>(null);
   const dragHoverTimer = useRef<NodeJS.Timeout | null>(null);
   const currentHoverNode = useRef<string | null>(null);
   const dragCheckThrottle = useRef<NodeJS.Timeout | null>(null);
-  
+
   // 实体子图相关状态
   const [entitySubgraphMode, setEntitySubgraphMode] = useState(false);
   const [currentEntityId, setCurrentEntityId] = useState<string | null>(null);
-  
+  let allNodes: any = []
+
   // 全屏状态
   const [isFullscreen, setIsFullscreen] = useState(false);
-  
+
   // 文档内容状态
   const [documentContent, setDocumentContent] = useState<string>('');
-  
+
   // 浮动按钮相关状态
   const [showFloatingMenu, setShowFloatingMenu] = useState(false);
   const [addEntityModalVisible, setAddEntityModalVisible] = useState(false);
@@ -261,10 +262,10 @@ const GraphVisualization: React.FC = () => {
     }
   }, [selectedCategory]);
   useEffect(() => {
-     if (selectedDocument) {
-       loadDocumentSubgraph();
-     }
-   }, [selectedDocument]);
+    if (selectedDocument) {
+      loadDocumentSubgraph();
+    }
+  }, [selectedDocument]);
 
   useEffect(() => {
     if (subgraph) {
@@ -367,31 +368,32 @@ const GraphVisualization: React.FC = () => {
     setLoading(true);
     try {
       const entitySubgraphResponse = await apiService.getEntitySubgraph(entityId, 1);
-      
+
       // 将 EntitySubgraphResponse 转换为 Subgraph 格式
       // 需要将 SubgraphRelationship 转换为 Relationship 格式
-       const convertedRelationships: Relationship[] = entitySubgraphResponse.relationships.map(rel => ({
-          id: rel.id,
-          relation_type: rel.type,
-          source_entity_id: rel.source_id,
-          target_entity_id: rel.target_id,
-          description: rel.properties?.description || '',
-          confidence: rel.properties?.confidence || 1.0,
-          graph_id: selectedGraph?.id || '',
-          properties: rel.properties
-        }));
-      
+      const convertedRelationships: Relationship[] = entitySubgraphResponse.relationships.map(rel => ({
+        id: rel.id,
+        relation_type: rel.type,
+        source_entity_id: rel.source_id,
+        target_entity_id: rel.target_id,
+        description: rel.properties?.description || '',
+        confidence: rel.properties?.confidence || 1.0,
+        graph_id: selectedGraph?.id || '',
+        properties: rel.properties
+      }));
+
       // 去重处理：避免center_entity和entities中的重复节点
       const allEntities = [entitySubgraphResponse.center_entity, ...entitySubgraphResponse.entities];
-      const uniqueEntities = allEntities.filter((entity, index, self) => 
+      allNodes = allEntities
+      const uniqueEntities = allEntities.filter((entity, index, self) =>
         index === self.findIndex(e => e.id === entity.id)
       );
-      
+
       const subgraphData: Subgraph = {
         entities: uniqueEntities,
         relationships: convertedRelationships
       };
-      
+
       setSubgraph(subgraphData);
       setEntitySubgraphMode(true);
       setCurrentEntityId(entityId);
@@ -497,11 +499,11 @@ const GraphVisualization: React.FC = () => {
       const toId = (anyRel.target_entity_id ?? anyRel.end_node_id ?? '').toString();
       const relType = (anyRel.properties?.relation_type ?? anyRel.relation_type ?? anyRel.type ?? '') as string;
       const description = anyRel.description || anyRel.properties?.description || '';
-      
 
-      
+
+
       const titleText = description ? `关系类型: ${relType}\n描述: ${description}` : `关系类型: ${relType}`;
-      
+
       return {
         id: (anyRel.id ?? '').toString(),
         from: fromId,
@@ -539,12 +541,12 @@ const GraphVisualization: React.FC = () => {
       '产品': '#ffc069',
       '技术': '#36cfc9'
     };
-    
+
     // 如果有预定义颜色，直接返回
     if (predefinedColors[type]) {
       return predefinedColors[type];
     }
-    
+
     // 动态生成颜色：使用字符串哈希生成HSL颜色
     const hashCode = (str: string): number => {
       let hash = 0;
@@ -555,12 +557,12 @@ const GraphVisualization: React.FC = () => {
       }
       return Math.abs(hash);
     };
-    
+
     const hash = hashCode(type);
     const hue = hash % 360; // 色相：0-359
     const saturation = 60 + (hash % 30); // 饱和度：60-89
     const lightness = 50 + (hash % 20); // 亮度：50-69
-    
+
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
 
@@ -623,7 +625,7 @@ const GraphVisualization: React.FC = () => {
       },
       edges: {
         width: edgeWidth,
-        color: { 
+        color: {
           color: '#cccccc',
           highlight: '#FFC107',
           hover: '#e0e0e0',
@@ -782,51 +784,67 @@ const GraphVisualization: React.FC = () => {
         if (dragCheckThrottle.current) {
           clearTimeout(dragCheckThrottle.current);
         }
-        
+
         dragCheckThrottle.current = setTimeout(() => {
           if (!networkInstance.current || !dragStartNode.current) return;
-          
+
           // 获取当前拖拽的节点位置
           let nodeId = null;
-          
+
           // 优先使用DOM坐标，通常更准确
           if (params.pointer.DOM) {
             nodeId = networkInstance.current.getNodeAt(params.pointer.DOM);
           }
-          
+
           // 如果DOM坐标检测失败，尝试canvas坐标
           if (!nodeId && params.pointer.canvas) {
             nodeId = networkInstance.current.getNodeAt(params.pointer.canvas);
           }
-          
+
           // 转换为字符串以便比较
-          const targetNodeId = nodeId ? String(nodeId) : null;
-          
+          let targetNodeId = nodeId ? String(nodeId) : null;
+
+
           // 只有当检测到有效的目标节点且不是源节点时才处理
+          if (targetNodeId === dragStartNode.current) {
+            console.log('id 相同 通过遍历位置获取')
+            const positionArr = networkInstance.current.getPositions(networkData.nodes?.map((i: any) => i.id).filter(i => i !== dragStartNode.current))
+            for (let key in positionArr) {
+              if (Math.abs(positionArr[key].x - params.pointer.canvas.x) < 60 && Math.abs(positionArr[key].y - params.pointer.canvas.y) < 60) {
+                targetNodeId = key
+                console.log('---->', targetNodeId)
+              }
+            }
+          }
+
+
           if (targetNodeId && targetNodeId !== dragStartNode.current) {
+            console.log('---->>>>>', 1)
             // 如果是新的hover节点
             if (currentHoverNode.current !== targetNodeId) {
+              console.log('---->>>>>', 2)
               // 清除之前的定时器
               if (dragHoverTimer.current) {
                 clearTimeout(dragHoverTimer.current);
                 dragHoverTimer.current = null;
               }
-              
+
               // 更新当前hover节点
               currentHoverNode.current = targetNodeId;
-              
+
               // 高亮目标节点 - 避免使用focus防止中断拖拽
               if (networkInstance.current) {
+                console.log('---->>>>>', 3)
                 // 先取消所有选择
                 networkInstance.current.unselectAll();
                 // 选择目标节点进行高亮
                 networkInstance.current.selectNodes([targetNodeId]);
               }
-              
+
               // 设置新的定时器，2秒后触发合并
               dragHoverTimer.current = setTimeout(() => {
                 if (dragStartNode.current && currentHoverNode.current === targetNodeId) {
-                  handleDragMerge(dragStartNode.current, currentHoverNode.current);
+                  handleDragMerge(dragStartNode.current, currentHoverNode.current as string);
                 }
               }, 2000);
             }
@@ -839,14 +857,14 @@ const GraphVisualization: React.FC = () => {
               }
               currentHoverNode.current = null;
             }
-            
+
             // 清除定时器
             if (dragHoverTimer.current) {
               clearTimeout(dragHoverTimer.current);
               dragHoverTimer.current = null;
             }
           }
-        }, 100);
+        }, 50);
       }
     });
 
@@ -856,12 +874,12 @@ const GraphVisualization: React.FC = () => {
         clearTimeout(dragHoverTimer.current);
         dragHoverTimer.current = null;
       }
-      
+
       if (dragCheckThrottle.current) {
         clearTimeout(dragCheckThrottle.current);
         dragCheckThrottle.current = null;
       }
-      
+
       // 清除hover状态
       if (currentHoverNode.current) {
         if (networkInstance.current) {
@@ -869,7 +887,7 @@ const GraphVisualization: React.FC = () => {
         }
         currentHoverNode.current = null;
       }
-      
+
       dragStartTime.current = null;
       dragStartNode.current = null;
     });
@@ -879,10 +897,10 @@ const GraphVisualization: React.FC = () => {
     setSearchTerm(value);
     if (networkInstance.current && value && networkData.nodes) {
       const nodes = networkData.nodes as GraphNode[];
-      const matchingNodes = nodes.filter((node: GraphNode) => 
+      const matchingNodes = nodes.filter((node: GraphNode) =>
         node.label?.toLowerCase().includes(value.toLowerCase())
       );
-      
+
       if (matchingNodes.length > 0) {
         const nodeIds = matchingNodes.map((node: GraphNode) => node.id);
         networkInstance.current.selectNodes(nodeIds);
@@ -936,17 +954,17 @@ const GraphVisualization: React.FC = () => {
       message.warning('不能将实体拖拽到自己身上');
       return;
     }
-    
+
     const nodes = networkData.nodes as GraphNode[];
     const targetEntity = nodes.find(n => n.id === targetEntityId);
-    
+
     if (targetEntity) {
-        setDragSourceEntity(sourceEntityId);
-        setDragTargetEntity(targetEntityId);
-        setMergedName(targetEntity.label);
-        setMergedDescription('');
-        setDragMergeVisible(true);
-      }
+      setDragSourceEntity(sourceEntityId);
+      setDragTargetEntity(targetEntityId);
+      setMergedName(targetEntity.label);
+      setMergedDescription('');
+      setDragMergeVisible(true);
+    }
   };
 
   const executeDragMerge = async () => {
@@ -964,7 +982,7 @@ const GraphVisualization: React.FC = () => {
       };
 
       const response = await apiService.mergeEntities(mergeRequest);
-      
+
       if (response.success) {
         message.success(response.message);
         setDragMergeVisible(false);
@@ -972,7 +990,7 @@ const GraphVisualization: React.FC = () => {
         setDragTargetEntity(null);
         setMergedName('');
         setMergedDescription('');
-        
+
         // 延迟重新加载图谱数据，避免中断拖拽操作
         setTimeout(() => {
           if (selectedDocument) {
@@ -1007,7 +1025,7 @@ const GraphVisualization: React.FC = () => {
   // 实体编辑相关函数
   const handleEditEntity = () => {
     if (!selectedNode) return;
-    
+
     setIsEditingEntity(true);
     form.setFieldsValue({
       name: selectedNode.label,
@@ -1018,7 +1036,7 @@ const GraphVisualization: React.FC = () => {
 
   const handleSaveEntity = async () => {
     if (!selectedNode || !selectedGraph) return;
-    
+
     try {
       const values = await form.validateFields();
       const updateData = {
@@ -1030,7 +1048,7 @@ const GraphVisualization: React.FC = () => {
 
       await apiService.updateEntity(selectedNode.id, updateData);
       message.success('实体更新成功! 🎉');
-      
+
       // 更新本地节点数据
       const updatedNode = {
         ...selectedNode,
@@ -1042,9 +1060,9 @@ const GraphVisualization: React.FC = () => {
         }
       };
       setSelectedNode(updatedNode);
-      
+
       setIsEditingEntity(false);
-      
+
       // 重新加载图谱数据以更新可视化
       if (selectedDocument) {
         loadDocumentSubgraph();
@@ -1066,7 +1084,7 @@ const GraphVisualization: React.FC = () => {
 
   const handleDeleteEntity = () => {
     if (!selectedNode || !selectedGraph) return;
-    
+
     Modal.confirm({
       title: '确认删除实体',
       content: `确定要删除实体 "${selectedNode.label}" 吗？此操作不可撤销。`,
@@ -1077,12 +1095,12 @@ const GraphVisualization: React.FC = () => {
         try {
           await apiService.deleteEntity(selectedNode.id);
           message.success('实体删除成功! 🗑️');
-          
+
           // 关闭Drawer
           setDrawerVisible(false);
           setSelectedNode(null);
           setIsEditingEntity(false);
-          
+
           // 重新加载图谱数据以更新可视化
           if (selectedDocument) {
             loadDocumentSubgraph();
@@ -1102,7 +1120,7 @@ const GraphVisualization: React.FC = () => {
   // 边编辑相关函数
   const handleEditEdge = () => {
     if (!selectedEdge) return;
-    
+
     setIsEditingEdge(true);
     edgeForm.setFieldsValue({
       type: selectedEdge.type,
@@ -1112,7 +1130,7 @@ const GraphVisualization: React.FC = () => {
 
   const handleSaveEdge = async () => {
     if (!selectedEdge || !selectedGraph) return;
-    
+
     try {
       const values = await edgeForm.validateFields();
       const updateData = {
@@ -1123,7 +1141,7 @@ const GraphVisualization: React.FC = () => {
 
       await apiService.updateRelation(selectedEdge.id, updateData);
       message.success('关系更新成功! 🎉');
-      
+
       // 更新本地边数据
       const updatedEdge = {
         ...selectedEdge,
@@ -1131,9 +1149,9 @@ const GraphVisualization: React.FC = () => {
         description: values.description
       };
       setSelectedEdge(updatedEdge);
-      
+
       setIsEditingEdge(false);
-      
+
       // 重新加载图谱数据以更新可视化
       if (selectedDocument) {
         loadDocumentSubgraph();
@@ -1156,15 +1174,15 @@ const GraphVisualization: React.FC = () => {
   // 删除关系函数
   const handleDeleteEdge = async (relationId: string) => {
     if (!selectedGraph) return;
-    
+
     try {
       await apiService.deleteRelation(relationId);
       message.success('关系删除成功! 🎉');
-      
+
       // 关闭侧边栏
       setSelectedEdge(null);
       setIsEditingEdge(false);
-      
+
       // 重新加载图谱数据以更新可视化
       if (selectedDocument) {
         loadDocumentSubgraph();
@@ -1215,7 +1233,7 @@ const GraphVisualization: React.FC = () => {
   const handleAddEntitySubmit = async () => {
     try {
       const values = await addEntityForm.validateFields();
-      
+
       // 处理document_ids：将逗号分隔的字符串转换为数字数组
       let document_ids: number[] | undefined;
       if (values.document_ids && values.document_ids.trim()) {
@@ -1224,7 +1242,7 @@ const GraphVisualization: React.FC = () => {
           .map((id: string) => parseInt(id.trim()))
           .filter((id: number) => !isNaN(id));
       }
-      
+
       // 处理chunk_ids：将逗号分隔的字符串转换为字符串数组
       let chunk_ids: string[] | undefined;
       if (values.chunk_ids && values.chunk_ids.trim()) {
@@ -1233,7 +1251,7 @@ const GraphVisualization: React.FC = () => {
           .map((id: string) => id.trim())
           .filter((id: string) => id.length > 0);
       }
-      
+
       const entityData = {
         name: values.name,
         entity_type: values.entity_type,
@@ -1246,7 +1264,7 @@ const GraphVisualization: React.FC = () => {
 
       // 创建实体
       const newEntity = await apiService.createEntity(entityData);
-      
+
       // 创建与选定实体的关系
       if (values.related_entity_id && values.relation_type) {
         const relationData = {
@@ -1257,7 +1275,7 @@ const GraphVisualization: React.FC = () => {
           description: `${values.name} 与现有实体的关联关系`,
           graph_id: selectedGraph!.id
         };
-        
+
         try {
           await apiService.createRelation(relationData);
           message.success('实体和关系创建成功! 🎉 新实体已与现有实体建立连接');
@@ -1268,9 +1286,9 @@ const GraphVisualization: React.FC = () => {
       } else {
         message.success('实体创建成功! 🎉');
       }
-      
+
       setAddEntityModalVisible(false);
-      
+
       // 重新加载图谱数据
       if (selectedDocument) {
         loadDocumentSubgraph();
@@ -1300,7 +1318,7 @@ const GraphVisualization: React.FC = () => {
       await apiService.createRelation(relationData);
       message.success('关系创建成功! 🎉');
       setAddRelationModalVisible(false);
-      
+
       // 重新加载图谱数据
       if (selectedDocument) {
         loadDocumentSubgraph();
@@ -1316,7 +1334,7 @@ const GraphVisualization: React.FC = () => {
   };
 
   return (
-    <div style={{ 
+    <div style={{
       padding: isFullscreen ? '0' : '24px',
       position: isFullscreen ? 'fixed' : 'relative',
       top: isFullscreen ? 0 : 'auto',
@@ -1370,23 +1388,23 @@ const GraphVisualization: React.FC = () => {
                       }}
                     />
                   )}
-                   {selectedGraph && (
-                     <Select
-                       placeholder="选择文档"
-                       style={{ width: 200 }}
-                       value={selectedDocument?.id}
-                       onChange={(value) => {
-                         const doc = documents.find(d => d.id === value);
-                         setSelectedDocument(doc || null);
-                       }}
-                     >
-                       {documents.map(doc => (
-                         <Option key={doc.id} value={doc.id}>
-                           {doc.filename}
-                         </Option>
-                       ))}
-                     </Select>
-                   )}
+                  {selectedGraph && (
+                    <Select
+                      placeholder="选择文档"
+                      style={{ width: 200 }}
+                      value={selectedDocument?.id}
+                      onChange={(value) => {
+                        const doc = documents.find(d => d.id === value);
+                        setSelectedDocument(doc || null);
+                      }}
+                    >
+                      {documents.map(doc => (
+                        <Option key={doc.id} value={doc.id}>
+                          {doc.filename}
+                        </Option>
+                      ))}
+                    </Select>
+                  )}
 
                   {selectedGraph && !selectedCategory && (
                     <Button type="primary" onClick={loadGraphSubgraph} icon={<SearchOutlined />}>加载图谱子图谱</Button>
@@ -1406,17 +1424,17 @@ const GraphVisualization: React.FC = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span>图谱视图</span>
                       {entitySubgraphMode && currentEntityId && (
-                         <Tag color="blue">
-                           🎯 实体子图: {currentEntityId}
-                         </Tag>
-                       )}
+                        <Tag color="blue">
+                          🎯 实体子图: {currentEntityId}
+                        </Tag>
+                      )}
                     </div>
                   }
                   extra={
                     <Space>
                       {entitySubgraphMode && (
-                        <Button 
-                          type="default" 
+                        <Button
+                          type="default"
                           icon={<ReloadOutlined />}
                           onClick={resetToOriginalView}
                           size="small"
@@ -1437,9 +1455,9 @@ const GraphVisualization: React.FC = () => {
                         <Button icon={<ZoomOutOutlined />} onClick={handleZoomOut} />
                       </Tooltip>
                       <Tooltip title={isFullscreen ? "退出全屏" : "全屏显示"}>
-                        <Button 
-                          icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} 
-                          onClick={handleFullscreen} 
+                        <Button
+                          icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                          onClick={handleFullscreen}
                         />
                       </Tooltip>
                       <Tooltip title="重置视图">
@@ -1467,156 +1485,156 @@ const GraphVisualization: React.FC = () => {
                   </Spin>
                 </Card>
               </Col>
-              
+
               {!isFullscreen && (
                 <Col span={6}>
-                <Card size="small" title="图谱统计">
-                  <Descriptions column={1} size="small">
-                    <Descriptions.Item label="节点数量">
-                      <Text strong>{stats.nodes}</Text>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="边数量">
-                      <Text strong>{stats.edges}</Text>
-                    </Descriptions.Item>
-                  </Descriptions>
-                  
-                  <Divider style={{ margin: '12px 0' }} />
-                  
-                  <div style={{ marginBottom: 16 }}>
-                    <Text strong>节点类型分布</Text>
-                    <div style={{ marginTop: 8 }}>
-                      {Object.entries(stats.nodeTypes).map(([type, count]) => (
-                        <Tag key={type} color={getNodeColor(type)} style={{ marginBottom: 4 }}>
-                          {type}: {count}
-                        </Tag>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Text strong>关系类型分布</Text>
-                    <div style={{ marginTop: 8 }}>
-                      {Object.entries(stats.edgeTypes).map(([type, count]) => (
-                        <Tag key={type} style={{ marginBottom: 4 }}>
-                          {type}: {count}
-                        </Tag>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-                
-                {/* 文档选择和内容展示卡片 */}
-                {selectedGraph && (
-                  <Card size="small" title="📄 文档内容" style={{ marginTop: 16 }}>
+                  <Card size="small" title="图谱统计">
+                    <Descriptions column={1} size="small">
+                      <Descriptions.Item label="节点数量">
+                        <Text strong>{stats.nodes}</Text>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="边数量">
+                        <Text strong>{stats.edges}</Text>
+                      </Descriptions.Item>
+                    </Descriptions>
+
+                    <Divider style={{ margin: '12px 0' }} />
+
                     <div style={{ marginBottom: 16 }}>
-                      <Select
-                        placeholder="选择文档查看内容"
-                        style={{ width: '100%' }}
-                        value={selectedDocument?.id}
-                        onChange={(value) => {
-                          const doc = documents.find(d => d.id === value);
-                          setSelectedDocument(doc || null);
-                          if (doc) {
-                            loadDocumentContent(doc.id);
-                          } else {
-                            setDocumentContent('');
-                          }
-                        }}
-                        allowClear
-                      >
-                        {documents.map(doc => (
-                          <Option key={doc.id} value={doc.id}>
-                            {doc.filename}
-                          </Option>
+                      <Text strong>节点类型分布</Text>
+                      <div style={{ marginTop: 8 }}>
+                        {Object.entries(stats.nodeTypes).map(([type, count]) => (
+                          <Tag key={type} color={getNodeColor(type)} style={{ marginBottom: 4 }}>
+                            {type}: {count}
+                          </Tag>
                         ))}
-                      </Select>
+                      </div>
                     </div>
-                    
-                    {documentContent && (
-                      <div 
-                        style={{ 
-                          maxHeight: '300px', 
-                          overflow: 'auto', 
-                          padding: '12px',
-                          backgroundColor: '#f5f5f5',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          lineHeight: '1.5',
-                          whiteSpace: 'pre-wrap'
-                        }}
-                      >
-                        {documentContent}
+
+                    <div>
+                      <Text strong>关系类型分布</Text>
+                      <div style={{ marginTop: 8 }}>
+                        {Object.entries(stats.edgeTypes).map(([type, count]) => (
+                          <Tag key={type} style={{ marginBottom: 4 }}>
+                            {type}: {count}
+                          </Tag>
+                        ))}
                       </div>
-                    )}
-                    
-                    {!documentContent && selectedDocument && (
-                      <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
-                        📝 暂无内容
-                      </div>
-                    )}
-                    
-                    {!selectedDocument && (
-                      <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
-                        👆 请选择文档查看内容
-                      </div>
-                    )}
+                    </div>
                   </Card>
-                )}
-                
-                <Card size="small" title="视图控制" style={{ marginTop: 16 }}>
-                  <div style={{ marginBottom: 16 }}>
-                    <Text>节点大小</Text>
-                    <Slider
-                      min={10}
-                      max={50}
-                      value={nodeSize}
-                      onChange={setNodeSize}
-                      style={{ marginTop: 8 }}
-                    />
-                  </div>
-                  
-                  <div style={{ marginBottom: 16 }}>
-                    <Text>边宽度</Text>
-                    <Slider
-                      min={1}
-                      max={5}
-                      value={edgeWidth}
-                      onChange={setEdgeWidth}
-                      style={{ marginTop: 8 }}
-                    />
-                  </div>
-                  
-                  <div style={{ marginBottom: 16 }}>
-                    <Text>边长度</Text>
-                    <Slider
-                      min={20}
-                      max={150}
-                      value={edgeLength}
-                      onChange={setEdgeLength}
-                      style={{ marginTop: 8 }}
-                      marks={{
-                        20: '短',
-                        50: '中',
-                        100: '长',
-                        150: '很长'
-                      }}
-                    />
-                  </div>
-                  
-                  <div style={{ marginBottom: 16 }}>
-                    <Space>
-                      <Text>显示标签</Text>
-                      <Switch checked={showLabels} onChange={setShowLabels} />
-                    </Space>
-                  </div>
-                  
-                  <div>
-                    <Space>
-                      <Text>物理引擎</Text>
-                      <Switch checked={physics} onChange={setPhysics} />
-                    </Space>
-                  </div>
-                </Card>
+
+                  {/* 文档选择和内容展示卡片 */}
+                  {selectedGraph && (
+                    <Card size="small" title="📄 文档内容" style={{ marginTop: 16 }}>
+                      <div style={{ marginBottom: 16 }}>
+                        <Select
+                          placeholder="选择文档查看内容"
+                          style={{ width: '100%' }}
+                          value={selectedDocument?.id}
+                          onChange={(value) => {
+                            const doc = documents.find(d => d.id === value);
+                            setSelectedDocument(doc || null);
+                            if (doc) {
+                              loadDocumentContent(doc.id);
+                            } else {
+                              setDocumentContent('');
+                            }
+                          }}
+                          allowClear
+                        >
+                          {documents.map(doc => (
+                            <Option key={doc.id} value={doc.id}>
+                              {doc.filename}
+                            </Option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      {documentContent && (
+                        <div
+                          style={{
+                            maxHeight: '300px',
+                            overflow: 'auto',
+                            padding: '12px',
+                            backgroundColor: '#f5f5f5',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            lineHeight: '1.5',
+                            whiteSpace: 'pre-wrap'
+                          }}
+                        >
+                          {documentContent}
+                        </div>
+                      )}
+
+                      {!documentContent && selectedDocument && (
+                        <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                          📝 暂无内容
+                        </div>
+                      )}
+
+                      {!selectedDocument && (
+                        <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                          👆 请选择文档查看内容
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  <Card size="small" title="视图控制" style={{ marginTop: 16 }}>
+                    <div style={{ marginBottom: 16 }}>
+                      <Text>节点大小</Text>
+                      <Slider
+                        min={10}
+                        max={50}
+                        value={nodeSize}
+                        onChange={setNodeSize}
+                        style={{ marginTop: 8 }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <Text>边宽度</Text>
+                      <Slider
+                        min={1}
+                        max={5}
+                        value={edgeWidth}
+                        onChange={setEdgeWidth}
+                        style={{ marginTop: 8 }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <Text>边长度</Text>
+                      <Slider
+                        min={20}
+                        max={150}
+                        value={edgeLength}
+                        onChange={setEdgeLength}
+                        style={{ marginTop: 8 }}
+                        marks={{
+                          20: '短',
+                          50: '中',
+                          100: '长',
+                          150: '很长'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <Space>
+                        <Text>显示标签</Text>
+                        <Switch checked={showLabels} onChange={setShowLabels} />
+                      </Space>
+                    </div>
+
+                    <div>
+                      <Space>
+                        <Text>物理引擎</Text>
+                        <Switch checked={physics} onChange={setPhysics} />
+                      </Space>
+                    </div>
+                  </Card>
                 </Col>
               )}
             </Row>
@@ -1630,9 +1648,9 @@ const GraphVisualization: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{isEditingEntity ? '编辑实体' : '节点详情'}</span>
               {!isEditingEntity && (
-                <Button 
-                  type="text" 
-                  icon={<EditOutlined />} 
+                <Button
+                  type="text"
+                  icon={<EditOutlined />}
                   onClick={handleEditEntity}
                   size="small"
                 >
@@ -1644,9 +1662,9 @@ const GraphVisualization: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{isEditingEdge ? '编辑关系' : '关系详情'}</span>
               {!isEditingEdge && (
-                <Button 
-                  type="text" 
-                  icon={<EditOutlined />} 
+                <Button
+                  type="text"
+                  icon={<EditOutlined />}
                   onClick={handleEditEdge}
                   size="small"
                 >
@@ -1667,38 +1685,38 @@ const GraphVisualization: React.FC = () => {
         open={drawerVisible}
         width={400}
         footer={isEditingEntity && selectedNode ? (
-            <div style={{ textAlign: 'right' }}>
-              <Space>
-                <Button onClick={handleCancelEdit} icon={<CloseOutlined />}>
-                  取消
-                </Button>
-                <Button danger onClick={handleDeleteEntity} icon={<DeleteOutlined />}>
-                  删除
-                </Button>
-                <Button type="primary" onClick={handleSaveEntity} icon={<SaveOutlined />}>
-                  保存
-                </Button>
-              </Space>
-            </div>
-          ) : isEditingEdge && selectedEdge ? (
-            <div style={{ textAlign: 'right' }}>
-              <Space>
-                <Button onClick={handleCancelEditEdge} icon={<CloseOutlined />}>
-                  取消
-                </Button>
-                <Button 
-                  danger 
-                  onClick={() => handleDeleteEdge(selectedEdge.id)} 
-                  icon={<DeleteOutlined />}
-                >
-                  删除
-                </Button>
-                <Button type="primary" onClick={handleSaveEdge} icon={<SaveOutlined />}>
-                  保存
-                </Button>
-              </Space>
-            </div>
-          ) : null
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={handleCancelEdit} icon={<CloseOutlined />}>
+                取消
+              </Button>
+              <Button danger onClick={handleDeleteEntity} icon={<DeleteOutlined />}>
+                删除
+              </Button>
+              <Button type="primary" onClick={handleSaveEntity} icon={<SaveOutlined />}>
+                保存
+              </Button>
+            </Space>
+          </div>
+        ) : isEditingEdge && selectedEdge ? (
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={handleCancelEditEdge} icon={<CloseOutlined />}>
+                取消
+              </Button>
+              <Button
+                danger
+                onClick={() => handleDeleteEdge(selectedEdge.id)}
+                icon={<DeleteOutlined />}
+              >
+                删除
+              </Button>
+              <Button type="primary" onClick={handleSaveEdge} icon={<SaveOutlined />}>
+                保存
+              </Button>
+            </Space>
+          </div>
+        ) : null
         }
       >
         {selectedNode && (
@@ -1719,12 +1737,12 @@ const GraphVisualization: React.FC = () => {
                     <Descriptions.Item label="频次">{selectedNode.properties.frequency}</Descriptions.Item>
                   )}
                 </Descriptions>
-                
+
                 {/* 实体子图操作按钮 */}
                 <div style={{ marginTop: 16, textAlign: 'center' }}>
                   <Space>
-                    <Button 
-                      type="primary" 
+                    <Button
+                      type="primary"
                       icon={<SearchOutlined />}
                       onClick={() => loadEntitySubgraph(selectedNode.id)}
                       loading={loading}
@@ -1732,7 +1750,7 @@ const GraphVisualization: React.FC = () => {
                       查看实体子图
                     </Button>
                     {entitySubgraphMode && currentEntityId === selectedNode.id && (
-                      <Button 
+                      <Button
                         icon={<ReloadOutlined />}
                         onClick={resetToOriginalView}
                       >
@@ -1741,7 +1759,7 @@ const GraphVisualization: React.FC = () => {
                     )}
                   </Space>
                 </div>
-                
+
                 {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
                   <div style={{ marginTop: 16 }}>
                     <Text strong>属性信息</Text>
@@ -1773,7 +1791,7 @@ const GraphVisualization: React.FC = () => {
                 >
                   <Input placeholder="请输入实体名称" />
                 </Form.Item>
-                
+
                 <Form.Item
                   label="实体类型"
                   name="entity_type"
@@ -1785,17 +1803,17 @@ const GraphVisualization: React.FC = () => {
                     ))}
                   </Select>
                 </Form.Item>
-                
+
                 <Form.Item
                   label="描述"
                   name="description"
                 >
-                  <Input.TextArea 
-                    rows={4} 
-                    placeholder="请输入实体描述（可选）" 
+                  <Input.TextArea
+                    rows={4}
+                    placeholder="请输入实体描述（可选）"
                   />
                 </Form.Item>
-                
+
                 <div style={{ marginTop: 16, padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
                   <Text strong style={{ color: '#666' }}>实体ID: </Text>
                   <Text code>{selectedNode.id}</Text>
@@ -1804,7 +1822,7 @@ const GraphVisualization: React.FC = () => {
             )}
           </div>
         )}
-        
+
         {selectedEdge && (
           <div>
             {!isEditingEdge ? (
@@ -1867,22 +1885,22 @@ const GraphVisualization: React.FC = () => {
                     ))}
                   </Select>
                 </Form.Item>
-                
+
                 <Form.Item
                   label="描述"
                   name="description"
                 >
-                  <Input.TextArea 
-                    rows={4} 
-                    placeholder="请输入关系描述（可选）" 
+                  <Input.TextArea
+                    rows={4}
+                    placeholder="请输入关系描述（可选）"
                   />
                 </Form.Item>
-                
+
                 <div style={{ marginTop: 16, padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
                   <Text strong style={{ color: '#666' }}>关系ID: </Text>
                   <Text code>{selectedEdge.id}</Text>
                 </div>
-                
+
                 <div style={{ marginTop: 12, padding: '12px', backgroundColor: '#f0f8ff', borderRadius: '6px' }}>
                   <Text strong style={{ color: '#666' }}>源节点: </Text>
                   <Text>{(() => {
@@ -1927,7 +1945,7 @@ const GraphVisualization: React.FC = () => {
               return sourceNode ? `${sourceNode.label} (${dragSourceEntity})` : dragSourceEntity;
             })()}</Text>
           </Paragraph>
-          
+
           <Paragraph>
             <Text strong>目标实体: </Text>
             <Text>{(() => {
@@ -1936,9 +1954,9 @@ const GraphVisualization: React.FC = () => {
               return targetNode ? `${targetNode.label} (${dragTargetEntity})` : dragTargetEntity;
             })()}</Text>
           </Paragraph>
-          
+
           <Divider />
-          
+
           <div style={{ marginBottom: 16 }}>
             <Text strong>合并后名称:</Text>
             <Input
@@ -1948,7 +1966,7 @@ const GraphVisualization: React.FC = () => {
               style={{ marginTop: 8 }}
             />
           </div>
-          
+
           <div>
             <Text strong>合并后描述:</Text>
             <Input.TextArea
@@ -2009,7 +2027,7 @@ const GraphVisualization: React.FC = () => {
             </Button>
           </div>
         )}
-        
+
         {/* 主浮动按钮 */}
         <Button
           type="primary"
@@ -2050,7 +2068,7 @@ const GraphVisualization: React.FC = () => {
           >
             <Input placeholder="请输入实体名称" />
           </Form.Item>
-          
+
           <Form.Item
             label="实体类型"
             name="entity_type"
@@ -2062,7 +2080,7 @@ const GraphVisualization: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             label="关联现有实体"
             name="related_entity_id"
@@ -2077,7 +2095,7 @@ const GraphVisualization: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             label="关系类型"
             name="relation_type"
@@ -2090,17 +2108,17 @@ const GraphVisualization: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             label="描述"
             name="description"
           >
-            <Input.TextArea 
-              rows={3} 
-              placeholder="请输入实体描述（可选）" 
+            <Input.TextArea
+              rows={3}
+              placeholder="请输入实体描述（可选）"
             />
           </Form.Item>
-          
+
           <Form.Item
             label="关联文档ID"
             name="document_ids"
@@ -2108,7 +2126,7 @@ const GraphVisualization: React.FC = () => {
           >
             <Input placeholder="例如：1,2,3" />
           </Form.Item>
-          
+
           <Form.Item
             label="分块ID"
             name="chunk_ids"
@@ -2116,7 +2134,7 @@ const GraphVisualization: React.FC = () => {
           >
             <Input placeholder="例如：chunk1,chunk2,chunk3" />
           </Form.Item>
-          
+
           <Form.Item
             label="频次"
             name="frequency"
@@ -2166,7 +2184,7 @@ const GraphVisualization: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             label="目标实体"
             name="target_entity_id"
@@ -2180,7 +2198,7 @@ const GraphVisualization: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             label="关系类型"
             name="relation_type"
@@ -2192,7 +2210,7 @@ const GraphVisualization: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          
+
           <Form.Item
             label="置信度"
             name="confidence"
@@ -2209,14 +2227,14 @@ const GraphVisualization: React.FC = () => {
               }}
             />
           </Form.Item>
-          
+
           <Form.Item
             label="描述"
             name="description"
           >
-            <Input.TextArea 
-              rows={4} 
-              placeholder="请输入关系描述（可选）" 
+            <Input.TextArea
+              rows={4}
+              placeholder="请输入关系描述（可选）"
             />
           </Form.Item>
         </Form>
