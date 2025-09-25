@@ -159,6 +159,15 @@ wheels = [
 ]
 
 [[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/d3/38/af70d7ab1ae9d4da450eeec1fa3918940a5fafb9055e934af8d6eb0c2313/et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa" },
+]
+
+[[package]]
 name = "executing"
 version = "2.2.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -412,6 +421,8 @@ dependencies = [
     { name = "fastapi" },
     { name = "networkx" },
     { name = "openai" },
+    { name = "openpyxl" },
+    { name = "pandas" },
     { name = "passlib" },
     { name = "plotly" },
     { name = "psutil" },
@@ -431,6 +442,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.116.1" },
     { name = "networkx", specifier = ">=3.4.2" },
     { name = "openai", specifier = ">=1.98.0" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "pandas", specifier = ">=2.3.1" },
     { name = "passlib", specifier = ">=1.7.4" },
     { name = "plotly", specifier = ">=6.2.0" },
     { name = "psutil", specifier = ">=7.0.0" },
@@ -572,6 +585,18 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/d8/9d/52eadb15c92802711d6b6cf00df3a6d0d18b588f4c5ba5ff210c6419fc03/openai-1.98.0.tar.gz", hash = "sha256:3ee0fcc50ae95267fd22bd1ad095ba5402098f3df2162592e68109999f685427" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/a8/fe/f64631075b3d63a613c0d8ab761d5941631a470f6fa87eaaee1aa2b4ec0c/openai-1.98.0-py3-none-any.whl", hash = "sha256:b99b794ef92196829120e2df37647722104772d2a74d08305df9ced5f26eae34" },
+]
+
+[[package]]
+name = "openpyxl"
+version = "3.1.5"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+dependencies = [
+    { name = "et-xmlfile" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/3d/f9/88d94a75de065ea32619465d2f77b29a0469500e99012523b91cc4141cd1/openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2" },
 ]
 
 [[package]]

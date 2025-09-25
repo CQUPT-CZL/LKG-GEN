@@ -9,7 +9,8 @@ from app.schemas.entity import EntityCreate, RelationCreate, DocumentEntityRelat
 from app.schemas.resource import ResourceCreate
 from app.db.sqlite_session import SessionLocal
 from app.db.neo4j_session import get_neo4j_driver
-from app.core.chunker import chunk_document_by_lines
+from app.core.chunker import chunk_document_by_strategy, ChunkStrategy
+from app.crud.crud_system_config import crud_system_config
 from app.core.entity_extractor import extract_entities_from_chunk
 from app.core.relation_extractor import extract_relations_from_entities
 import time
@@ -33,7 +34,13 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
         
         # === 1. 真实文档分块 ===
         print("🔪 开始文档分块...")
-        chunks = chunk_document_by_lines(document.content)
+        
+        # 获取当前配置的分块策略
+        strategy_str = crud_system_config.get_chunk_strategy(db_session)
+        strategy = ChunkStrategy(strategy_str)
+        print(f"📋 使用分块策略: {strategy.value}")
+        
+        chunks = chunk_document_by_strategy(document.content, strategy)
         print(f"✅ 文档分块完成，共生成 {len(chunks)} 个分块")
         
         # === 2. 保存分块到SQLite数据库并提取实体 ===

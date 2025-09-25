@@ -35,11 +35,12 @@ import {
   ExclamationCircleOutlined,
   EditOutlined,
   NodeIndexOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  FileOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { apiService, KnowledgeGraphConfig, Prompt, PromptCreate, PromptUpdate, PromptType, PromptTypesListResponse, AIConfig, AIConfigCreate, AIConfigUpdate, AIProvider } from '../services/api';
+import { apiService, KnowledgeGraphConfig, Prompt, PromptCreate, PromptUpdate, PromptType, PromptTypesListResponse, AIConfig, AIConfigCreate, AIConfigUpdate, AIProvider, ChunkStrategyConfig, ChunkStrategyOption } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -143,6 +144,13 @@ const Settings: React.FC = () => {
   const [selectedPromptType, setSelectedPromptType] = useState<string>('all');
   const [promptLoading, setPromptLoading] = useState(false);
 
+  // 分块策略配置相关状态
+  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategyConfig>({
+    strategy: 'paragraph'
+  });
+  const [chunkStrategyOptions, setChunkStrategyOptions] = useState<ChunkStrategyOption[]>([]);
+  const [chunkStrategyLoading, setChunkStrategyLoading] = useState(false);
+
   useEffect(() => {
     form.setFieldsValue(config);
     loadKnowledgeGraphConfig();
@@ -150,6 +158,8 @@ const Settings: React.FC = () => {
     loadPromptTypes();
     loadAiConfigs();
     loadAiProviders();
+    loadChunkStrategy();
+    loadChunkStrategyOptions();
   }, []);
   
   // 加载知识图谱配置
@@ -233,6 +243,52 @@ const Settings: React.FC = () => {
     } catch (error) {
       console.error('加载AI提供商失败:', error);
       message.error('加载AI提供商失败');
+    }
+  };
+
+  // 加载分块策略配置
+  const loadChunkStrategy = async () => {
+    try {
+      setChunkStrategyLoading(true);
+      const config = await apiService.getChunkStrategy();
+      setChunkStrategy(config);
+    } catch (error) {
+      console.error('加载分块策略配置失败:', error);
+      message.error('加载分块策略配置失败');
+    } finally {
+      setChunkStrategyLoading(false);
+    }
+  };
+
+  // 加载分块策略选项
+  const loadChunkStrategyOptions = async () => {
+    try {
+      const response = await apiService.getChunkStrategyOptions();
+      // 后端返回的是 {strategies: [...]} 格式
+      const options = response.strategies || [];
+      setChunkStrategyOptions(options);
+    } catch (error) {
+      console.error('加载分块策略选项失败:', error);
+      // 设置默认选项
+      setChunkStrategyOptions([
+        { value: 'full_document', label: '全文档', description: '将整个文档作为一个块处理' },
+        { value: 'paragraph', label: '段落', description: '按段落分割文档（默认策略）' },
+        { value: 'sentence', label: '句子', description: '按句子分割文档' }
+      ]);
+    }
+  };
+
+  // 保存分块策略配置
+  const saveChunkStrategy = async () => {
+    try {
+      setChunkStrategyLoading(true);
+      await apiService.updateChunkStrategy(chunkStrategy);
+      message.success('分块策略配置保存成功 ✅');
+    } catch (error) {
+      console.error('保存分块策略配置失败:', error);
+      message.error('保存分块策略配置失败');
+    } finally {
+      setChunkStrategyLoading(false);
     }
   };
   
@@ -882,6 +938,57 @@ const Settings: React.FC = () => {
                   }
                 ]}
               />
+            </Card>
+          </TabPane>
+
+          {/* 文档处理配置 */}
+          <TabPane tab={<span><FileOutlined /> 文档处理</span>} key="document-processing">
+            <Card title="分块策略配置" loading={chunkStrategyLoading}>
+              <Row gutter={24}>
+                <Col span={24}>
+                  <Form.Item label="分块策略">
+                    <Select
+                      value={chunkStrategy.strategy}
+                      onChange={(value) => setChunkStrategy({...chunkStrategy, strategy: value})}
+                      placeholder="选择分块策略"
+                    >
+                      {chunkStrategyOptions && chunkStrategyOptions.length > 0 ? 
+                        chunkStrategyOptions.map(option => (
+                          <Option key={option.value} value={option.value}>
+                            {option.label}
+                          </Option>
+                        )) : (
+                          <Option value="paragraph">按段落分块</Option>
+                        )
+                      }
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Paragraph style={{ marginTop: 16, color: '#666' }}>
+                <Text type="secondary">
+                  💡 提示：
+                  <br />
+                  • <strong>全文档</strong>：将整个文档作为一个块处理，适合短文档
+                  <br />
+                  • <strong>段落</strong>：按段落分割文档，平衡处理效率和语义完整性（推荐）
+                  <br />
+                  • <strong>句子</strong>：按句子分割文档，提供最细粒度的分块
+                </Text>
+              </Paragraph>
+
+              <div style={{ marginTop: 24, textAlign: 'center' }}>
+                <Button 
+                  type="primary" 
+                  icon={<SaveOutlined />}
+                  onClick={saveChunkStrategy}
+                  loading={chunkStrategyLoading}
+                  size="large"
+                >
+                  保存配置
+                </Button>
+              </div>
             </Card>
           </TabPane>
         </Tabs>

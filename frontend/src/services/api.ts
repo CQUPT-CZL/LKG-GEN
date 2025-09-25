@@ -214,6 +214,21 @@ export interface AIProvidersListResponse {
   providers: AIProvider[];
 }
 
+// 分块策略相关接口
+export interface ChunkStrategyConfig {
+  strategy: 'full_document' | 'paragraph' | 'sentence';
+}
+
+export interface ChunkStrategyOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export interface ChunkStrategyOptionsResponse {
+  strategies: ChunkStrategyOption[];
+}
+
 export interface BatchResourceResponse {
   success_count: number;
   failed_count: number;
@@ -424,6 +439,14 @@ export const apiService = {
     api.post(`/ai-configs/${configId}/deactivate`),
   getAIProviders: (): Promise<AIProvidersListResponse> => 
     api.get('/ai-configs/providers/list'),
+
+  // 分块策略配置相关API
+  getChunkStrategy: (): Promise<ChunkStrategyConfig> => 
+    api.get('/system-config/chunk-strategy'),
+  updateChunkStrategy: (config: ChunkStrategyConfig): Promise<{ message: string }> => 
+    api.put('/system-config/chunk-strategy', config),
+  getChunkStrategyOptions: (): Promise<ChunkStrategyOptionsResponse> => 
+    api.get('/system-config/chunk-strategy/options'),
 };
 
 export default api;

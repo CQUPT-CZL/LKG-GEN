@@ -149,3 +149,18 @@ class AIConfig(Base):
     
     # 添加唯一约束：只能有一个默认配置
     # 这个约束需要在数据库层面通过migration或手动创建
+
+
+class SystemConfig(Base):
+    """
+    系统配置表模型
+    存储系统级别的配置信息，如分块策略等
+    """
+    __tablename__ = "system_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    config_key = Column(String, unique=True, nullable=False, index=True)  # 配置键名
+    config_value = Column(Text, nullable=False)  # 配置值（JSON格式）
+    description = Column(Text, nullable=True)  # 配置描述
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
