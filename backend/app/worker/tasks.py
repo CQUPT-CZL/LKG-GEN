@@ -13,6 +13,7 @@ from app.core.chunker import chunk_document_by_strategy, ChunkStrategy
 from app.crud.crud_system_config import crud_system_config
 from app.core.entity_extractor import extract_entities_from_chunk
 from app.core.relation_extractor import extract_relations_from_entities
+from app.core.document_cleaner import clean_document_content
 import time
 from app.core.disambiguation import disambiguate_entities_against_graph
 
@@ -32,7 +33,13 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             
         print(f"📖 文档信息: {document.filename} (文档ID: {document.id})")
         
-        # === 1. 真实文档分块 ===
+        # === 1. 文档内容净化 ===
+        print("🧹 开始文档内容净化...")
+        cleaned_content = clean_document_content(document.content)
+        print(f"✅ 文档内容净化完成，净化后长度: {len(cleaned_content)} 字符")
+        # print(cleaned_content)
+        
+        # === 2. 真实文档分块 ===
         print("🔪 开始文档分块...")
         
         # 获取当前配置的分块策略
@@ -40,10 +47,10 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
         strategy = ChunkStrategy(strategy_str)
         print(f"📋 使用分块策略: {strategy.value}")
         
-        chunks = chunk_document_by_strategy(document.content, strategy)
+        chunks = chunk_document_by_strategy(cleaned_content, strategy)
         print(f"✅ 文档分块完成，共生成 {len(chunks)} 个分块")
         
-        # === 2. 保存分块到SQLite数据库并提取实体 ===
+        # === 3. 保存分块到SQLite数据库并提取实体 ===
         all_entities = {}  # 用于去重的实体字典
         all_entities_list = []  # 保存所有原始实体（包含chunk_id）
         chunk_entities_map = {}  # 保存每个chunk对应的实体列表

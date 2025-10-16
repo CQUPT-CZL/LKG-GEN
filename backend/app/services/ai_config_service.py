@@ -74,12 +74,11 @@ def call_llm_with_config(
                 {"role": "user", "content": prompt}
             ],
             temperature=temperature,
-            max_tokens=max_tokens
+            # max_tokens=max_tokens
         )
         
         # 获取响应内容
         content = response.choices[0].message.content.strip()
-        
         # 尝试解析为JSON
         return _parse_llm_response(content)
         
