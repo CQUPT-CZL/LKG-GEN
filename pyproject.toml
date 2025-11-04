@@ -22,6 +22,7 @@ dependencies = [
     "pydantic-settings>=2.10.1",
     "openpyxl>=3.1.5",
     "pandas>=2.3.1",
+    "fastmcp>=2.13.0.2",
 ]
 
 [[tool.uv.index]]

@@ -285,6 +285,28 @@ export interface EntityMergeResponse {
   merged_entity?: Entity;
 }
 
+// 嵌入相似度Top-K相似对响应结构
+export interface BasicEntityInfoDTO {
+  id: string;
+  name: string;
+  entity_type: string;
+  description?: string;
+  frequency?: number;
+}
+
+export interface EmbeddingPairSuggestionDTO {
+  key: string;
+  entity_type: string;
+  a: BasicEntityInfoDTO;
+  b: BasicEntityInfoDTO;
+  score: number;
+  recommendedTargetId: string;
+}
+
+export interface EmbeddingTopPairsResponseDTO {
+  pairs: EmbeddingPairSuggestionDTO[];
+}
+
 
 
 // API方法
@@ -363,6 +385,25 @@ export const apiService = {
     api.post('/entities/merge', data),
   getEntitySubgraph: (entityId: string, hops: number = 1): Promise<EntitySubgraphResponse> => 
     api.get(`/entities/${entityId}/subgraph?hops=${hops}`),
+
+  // 嵌入相似度 Top-K 相似对检测
+  detectEmbeddingTopPairs: (graphId: string, topK: number = 3, maxEntities: number = 200): Promise<EmbeddingPairSuggestionDTO[]> =>
+    api
+      .post<EmbeddingTopPairsResponseDTO>(
+        '/entities/duplicates/topk-embedding',
+        {
+          graph_id: graphId,
+          top_k: topK,
+          max_entities: maxEntities,
+        },
+        {
+          timeout: 60000, // 嵌入计算可能较慢，延长超时时间
+        }
+      )
+      .then((res) => {
+        const data = res as unknown as EmbeddingTopPairsResponseDTO;
+        return data?.pairs ?? [];
+      }),
 
   // 关系管理接口
   getRelations: (graphId: string): Promise<Relationship[]> => 

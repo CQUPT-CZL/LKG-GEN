@@ -13,6 +13,7 @@ import EntityManager from './pages/EntityManager';
 import RelationManager from './pages/RelationManager';
 import CategoryManager from './pages/CategoryManager';
 import Settings from './pages/Settings';
+import EntityDisambiguation from './pages/EntityDisambiguation';
 
 const { Content } = Layout;
 
@@ -31,6 +32,7 @@ function App() {
             <Route path="/manager" element={<GraphManager />} />
             <Route path="/documents" element={<DocumentManager />} />
             <Route path="/visualization" element={<GraphVisualization />} />
+            <Route path="/disambiguation" element={<EntityDisambiguation />} />
             <Route path="/entities" element={<EntityManager />} />
             <Route path="/relations" element={<RelationManager />} />
             <Route path="/categories" element={<CategoryManager />} />

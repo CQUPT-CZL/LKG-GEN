@@ -3,11 +3,37 @@
 from fastapi import APIRouter, Depends, HTTPException
 from neo4j import Driver
 from neo4j.time import DateTime as Neo4jDateTime
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from app.api import deps
 from app.schemas import entity as entity_schemas
+from pydantic import BaseModel
 from app.crud import crud_entity, crud_graph
+import asyncio
+
+try:
+    from fastmcp import Client as MCPClient
+except Exception:
+    MCPClient = None  # 允许后续进行可用性检查
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    if not a or not b:
+        return 0.0
+    if len(a) != len(b):
+        return 0.0
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    # 手动计算以避免额外依赖
+    for i in range(len(a)):
+        va = float(a[i])
+        vb = float(b[i])
+        dot += va * vb
+        na += va * va
+        nb += vb * vb
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return dot / ((na ** 0.5) * (nb ** 0.5))
 
 router = APIRouter()
 
@@ -264,3 +290,142 @@ def get_entity_subgraph(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取实体子图失败: {e}")
+
+
+# --- 嵌入相似度 Top-K 相似对检测 ---
+class EmbeddingTopPairsRequest(BaseModel):
+    graph_id: str
+    top_k: int = 3
+    max_entities: int = 200
+    mcp_server_url: Optional[str] = "http://113.249.91.14:8008/mcp"
+
+class BasicEntityInfo(BaseModel):
+    id: str
+    name: str
+    entity_type: str
+    description: Optional[str] = None
+    frequency: Optional[int] = 0
+
+class EmbeddingPairSuggestion(BaseModel):
+    key: str
+    entity_type: str
+    a: BasicEntityInfo
+    b: BasicEntityInfo
+    score: float
+    recommendedTargetId: str
+
+class EmbeddingTopPairsResponse(BaseModel):
+    pairs: List[EmbeddingPairSuggestion]
+
+
+@router.post("/duplicates/topk-embedding", response_model=EmbeddingTopPairsResponse)
+async def detect_topk_pairs_by_embedding(
+    *,
+    driver: Driver = Depends(deps.get_neo4j),
+    req: EmbeddingTopPairsRequest
+):
+    """
+    使用远程 MCP 嵌入服务，计算同类型实体之间的余弦相似度，并返回全局 Top-K 相似对。
+    """
+    # 检查 fastmcp 可用性
+    if MCPClient is None:
+        raise HTTPException(status_code=500, detail="后端未安装 fastmcp，无法调用嵌入服务")
+
+    # 加载实体列表（限制数量以避免过高计算负载）
+    try:
+        entities = crud_entity.get_entities_by_graph(driver=driver, graph_id=req.graph_id, skip=0, limit=req.max_entities)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取实体失败: {e}")
+
+    # 组织同类型集合
+    by_type: dict[str, list[dict]] = {}
+    for ent in entities:
+        t = ent.get("entity_type", "")
+        by_type.setdefault(t, []).append(ent)
+
+    # 构造需要生成嵌入的文本（名称+描述）
+    def build_text(ent: dict) -> str:
+        name = str(ent.get("name") or "")
+        desc = str(ent.get("description") or "")
+        text = name.strip()
+        if desc:
+            text = f"{text} {desc.strip()}"
+        return text
+
+    # 异步批量获取嵌入
+    async def get_embeddings(texts: List[str]) -> List[List[float]]:
+        async with MCPClient(req.mcp_server_url) as client:
+            tasks = [client.call_tool("get_query_embedding", {"text": t}) for t in texts]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            vecs: List[List[float]] = []
+            for res in results:
+                # 容错处理
+                if hasattr(res, "content"):
+                    contents = res.content
+                else:
+                    contents = res
+                if not isinstance(contents, (list, tuple)):
+                    contents = [contents]
+                # 寻找文本项并尝试解析为 JSON 列表或直接浮点列表
+                parsed: List[float] = []
+                for c in contents:
+                    try:
+                        if hasattr(c, "type") and c.type == "text" and hasattr(c, "text"):
+                            import json
+                            data = json.loads(c.text)
+                            if isinstance(data, list):
+                                parsed = [float(x) for x in data]
+                                break
+                        elif isinstance(c, list):
+                            parsed = [float(x) for x in c]
+                            break
+                    except Exception:
+                        parsed = []
+                vecs.append(parsed)
+            return vecs
+
+    # 为每个类型分别计算相似对
+    suggestions: List[EmbeddingPairSuggestion] = []
+    for t, items in by_type.items():
+        if len(items) < 2:
+            continue
+        texts = [build_text(ent) for ent in items]
+        vectors = await get_embeddings(texts)
+
+        n = len(items)
+        for i in range(n):
+            for j in range(i + 1, n):
+                sim = _cosine_similarity(vectors[i], vectors[j])
+                a = items[i]
+                b = items[j]
+                # 推荐目标：频次更高者（相同则选择 a）
+                fa = int(a.get("frequency", 0) or 0)
+                fb = int(b.get("frequency", 0) or 0)
+                target_id = a.get("id") if fa >= fb else b.get("id")
+                suggestions.append(
+                    EmbeddingPairSuggestion(
+                        key=f"{t}#{a.get('id')}-{b.get('id')}",
+                        entity_type=t,
+                        a=BasicEntityInfo(
+                            id=str(a.get("id")),
+                            name=str(a.get("name")),
+                            entity_type=t,
+                            description=a.get("description"),
+                            frequency=fa,
+                        ),
+                        b=BasicEntityInfo(
+                            id=str(b.get("id")),
+                            name=str(b.get("name")),
+                            entity_type=t,
+                            description=b.get("description"),
+                            frequency=fb,
+                        ),
+                        score=float(sim),
+                        recommendedTargetId=str(target_id),
+                    )
+                )
+
+    suggestions.sort(key=lambda s: s.score, reverse=True)
+    top = suggestions[: max(1, req.top_k)]
+    return EmbeddingTopPairsResponse(pairs=top)

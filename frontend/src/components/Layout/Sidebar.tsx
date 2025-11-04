@@ -61,6 +61,11 @@ const Sidebar: React.FC = () => {
       ],
     },
     {
+      key: '/disambiguation',
+      icon: <BranchesOutlined />,
+      label: '实体歧义消除',
+    },
+    {
       key: '/visualization',
       icon: <EyeOutlined />,
       label: '图谱可视化',
