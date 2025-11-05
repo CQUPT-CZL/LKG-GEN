@@ -390,6 +390,13 @@ const GraphVisualization: React.FC = () => {
         index === self.findIndex(e => e.id === entity.id)
       );
 
+      // 自动换行处理
+      uniqueEntities.forEach(entity => {
+        if (entity.name.length > 10) {
+          entity.name = entity.name.replace(/(.{10})/g, '$1\n');
+        }
+      });
+
       const subgraphData: Subgraph = {
         entities: uniqueEntities,
         relationships: convertedRelationships
@@ -427,6 +434,14 @@ const GraphVisualization: React.FC = () => {
     setLoading(true);
     try {
       const subgraphData = await apiService.getGraphSubgraph(selectedGraph.id);
+
+      // 自动换行处理
+      subgraphData.entities.forEach(entity => {
+        if (entity.name.length > 10) {
+          entity.name = entity.name.replace(/(.{10})/g, '$1\n');
+        }
+      });
+
       setSubgraph(subgraphData);
     } catch (error) {
       console.error('加载图谱子图谱失败:', error);
@@ -461,9 +476,16 @@ const GraphVisualization: React.FC = () => {
       const nodeColor = getNodeColor(nodeType);
       const fontColor = getContrastingTextColor(nodeColor);
 
+      // 根据label长度计算节点大小
+      const lines = entity.name.split('\n');
+      const lineCount = lines.length;
+      const maxLength = Math.max(...lines.map(line => line.length));
+      const value = 15 + lineCount * 5 + maxLength * 1.5;
+
       return {
         id: entity.id.toString(),
         label: entity.name,
+        value: value, // 设置节点大小
         type: nodeType,
         properties: {
           ...(entity as any).properties,
@@ -525,27 +547,28 @@ const GraphVisualization: React.FC = () => {
 
   // 动态生成节点颜色的函数
   const getNodeColor = (type: string): string => {
+    const isDarkMode = false;
     // 预定义一些常见类型的颜色
-    const predefinedColors: Record<string, string> = {
-      'Person': '#ff7875',
-      'Organization': '#40a9ff',
-      'Location': '#73d13d',
-      'Event': '#ffb347',
-      'Concept': '#b37feb',
-      'Product': '#ffc069',
-      'Technology': '#36cfc9',
-      '人物': '#ff7875',
-      '组织': '#40a9ff',
-      '地点': '#73d13d',
-      '事件': '#ffb347',
-      '概念': '#b37feb',
-      '产品': '#ffc069',
-      '技术': '#36cfc9'
+    const predefinedColors: Record<string, Record<'light' | 'dark', string>> = {
+        'Person': { light: '#ff7875', dark: '#a61d24' },
+        'Organization': { light: '#40a9ff', dark: '#1d39c4' },
+        'Location': { light: '#73d13d', dark: '#237804' },
+        'Event': { light: '#ffb347', dark: '#ad4e00' },
+        'Concept': { light: '#b37feb', dark: '#531dab' },
+        'Product': { light: '#ffc069', dark: '#ad6800' },
+        'Technology': { light: '#36cfc9', dark: '#006d75' },
+        '人物': { light: '#ff7875', dark: '#a61d24' },
+        '组织': { light: '#40a9ff', dark: '#1d39c4' },
+        '地点': { light: '#73d13d', dark: '#237804' },
+        '事件': { light: '#ffb347', dark: '#ad4e00' },
+        '概念': { light: '#b37feb', dark: '#531dab' },
+        '产品': { light: '#ffc069', dark: '#ad6800' },
+        '技术': { light: '#36cfc9', dark: '#006d75' }
     };
 
     // 如果有预定义颜色，直接返回
     if (predefinedColors[type]) {
-      return predefinedColors[type];
+      return predefinedColors[type]['light'];
     }
 
     // 动态生成颜色：使用字符串哈希生成HSL颜色
@@ -561,8 +584,8 @@ const GraphVisualization: React.FC = () => {
 
     const hash = hashCode(type);
     const hue = hash % 360; // 色相：0-359
-    const saturation = elegantMode ? 65 + (hash % 20) : 60 + (hash % 30); // 柔和的饱和度
-    const lightness = elegantMode ? 58 + (hash % 14) : 50 + (hash % 20); // 提升亮度
+    const saturation = isDarkMode ? 70 + (hash % 15) : 65 + (hash % 20); // 暗黑模式下饱和度更高
+    const lightness = isDarkMode ? 40 + (hash % 15) : 58 + (hash % 14); // 暗黑模式下亮度更低
 
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
@@ -595,82 +618,68 @@ const GraphVisualization: React.FC = () => {
     const options: Options = {
       nodes: {
         shape: 'ellipse',
-        size: nodeSize,
+        size: elegantMode ? 22 : 18,
+        borderWidth: elegantMode ? 3 : 2,
         font: {
-          size: showLabels ? (elegantMode ? 14 : 12) : 0,
-          color: '#ffffff',
-          face: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',
+          size: 14,
+          color: '#333',
           strokeWidth: 0,
-          align: 'center',
-          vadjust: 0
+          multi: 'html' // 开启自动换行
         },
-        borderWidth: elegantMode ? 1.5 : 2,
-        borderWidthSelected: elegantMode ? 3 : 4,
-        shadow: {
-          enabled: elegantMode,
-          color: 'rgba(0,0,0,0.12)',
-          size: 12,
-          x: 2,
-          y: 2
-        },
-        widthConstraint: {
-          minimum: 80,
-          maximum: 200
-        },
-        margin: {
-          top: 10,
-          right: 10,
-          bottom: 10,
-          left: 10
+        shadow: elegantMode ? {
+          enabled: true,
+          color: 'rgba(0,0,0,0.2)',
+          size: 10,
+          x: 0,
+          y: 4
+        } : { enabled: false },
+        scaling: {
+          min: 10,
+          max: 40,
+          label: {
+            enabled: true,
+            min: 14,
+            max: 22
+          }
         }
       },
       edges: {
-        width: edgeWidth,
+        width: 2,
         color: {
-          color: elegantMode ? '#bfbfbf' : '#cccccc',
-          highlight: elegantMode ? '#1890ff' : '#FFC107',
-          hover: elegantMode ? '#91d5ff' : '#e0e0e0',
-          inherit: false
+          color: 'rgba(0,0,0,0.4)',
+          highlight: '#1890ff',
+          hover: '#1890ff',
+          inherit: 'from',
+          opacity: 0.9
+        },
+        arrows: {
+          to: { enabled: true, scaleFactor: 0.8, type: 'arrow' }
         },
         smooth: {
           enabled: true,
-          type: elegantMode ? 'cubicBezier' : 'continuous',
-          roundness: elegantMode ? 0.35 : 0.2
-        },
-        arrows: {
-          to: { enabled: true, scaleFactor: 0.8 }
-        },
-        font: {
-          size: showLabels ? (elegantMode ? 12 : 11) : 0,
-          align: 'middle',
-          strokeWidth: 0,
-          color: elegantMode ? '#8c8c8c' : '#888888'
+          type: 'dynamic',
+          roundness: 0.5
         }
       },
       physics: {
-        enabled: physics,
+        enabled: true,
         solver: 'forceAtlas2Based',
         forceAtlas2Based: {
-          gravitationalConstant: elegantMode ? -35 : -50,
-          centralGravity: elegantMode ? 0.015 : 0.01,
-          springLength: edgeLength,
-          springConstant: elegantMode ? 0.07 : 0.08,
-          damping: elegantMode ? 0.5 : 0.4,
-          avoidOverlap: 1.0
+          gravitationalConstant: -80,
+          centralGravity: 0.02,
+          springLength: 120,
+          springConstant: 0.05,
+          damping: 0.6,
+          avoidOverlap: 0.8
         },
         stabilization: {
-          iterations: 800,
-          updateInterval: 25,
-          onlyDynamicEdges: false,
+          enabled: true,
+          iterations: 200,
           fit: true
-        },
-        timestep: elegantMode ? 0.4 : 0.35
+        }
       },
       interaction: {
         hover: true,
-        hoverConnectedEdges: true,
-        selectConnectedEdges: true,
-        multiselect: true,
         tooltipDelay: 200,
         dragNodes: true,
         dragView: true,
@@ -1354,7 +1363,7 @@ const GraphVisualization: React.FC = () => {
                 <Space>
                   <Select
                     placeholder="选择图谱"
-                    style={{ width: 200 }}
+                    style={{ width: 200, background: '#ffffff' }}
                     value={selectedGraph?.id}
                     onChange={(value) => {
                       const graph = graphs.find(g => g.id === value);
@@ -1373,8 +1382,8 @@ const GraphVisualization: React.FC = () => {
                     <TreeSelect
                       allowClear
                       placeholder="选择分类（可选，支持多级）"
-                      style={{ width: 260 }}
-                      dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
+                      style={{ width: 260, background: '#ffffff' }}
+                      dropdownStyle={{ maxHeight: 400, overflow: 'auto', background: '#ffffff' }}
                       treeData={categoryTree as any}
                       value={selectedCategory?.id}
                       treeDefaultExpandAll
@@ -1392,7 +1401,7 @@ const GraphVisualization: React.FC = () => {
                   {selectedGraph && (
                     <Select
                       placeholder="选择文档"
-                      style={{ width: 200 }}
+                      style={{ width: 200, background: '#ffffff' }}
                       value={selectedDocument?.id}
                       onChange={(value) => {
                         const doc = documents.find(d => d.id === value);
@@ -1470,6 +1479,7 @@ const GraphVisualization: React.FC = () => {
                       <Tooltip title="设置">
                         <Button icon={<SettingOutlined />} onClick={() => setDrawerVisible(true)} />
                       </Tooltip>
+
                     </Space>
                   }
                 >
@@ -1484,8 +1494,9 @@ const GraphVisualization: React.FC = () => {
                         borderRadius: 12,
                         boxShadow: elegantMode ? '0 6px 24px rgba(0,0,0,0.08)' : 'none',
                         background: elegantMode
-                          ? 'radial-gradient(1200px circle at 15% 35%, #f0f7ff 0%, #ffffff 40%, #fafafa 100%)'
-                          : 'transparent'
+                            ? 'radial-gradient(1200px circle at 15% 35%, #f0f7ff 0%, #ffffff 40%, #fafafa 100%)'
+                            : '#f5f5f5',
+                        transition: 'background-color 0.3s, border-color 0.3s'
                       }}
                     />
                   </Spin>
@@ -1494,7 +1505,7 @@ const GraphVisualization: React.FC = () => {
 
               {!isFullscreen && (
                 <Col span={6}>
-                  <Card size="small" title="图谱统计">
+                  <Card size="small" title="图谱统计" style={{ background: '#ffffff' }}>
                     <Descriptions column={1} size="small">
                       <Descriptions.Item label="节点数量">
                         <Text strong>{stats.nodes}</Text>
@@ -1535,11 +1546,11 @@ const GraphVisualization: React.FC = () => {
 
                   {/* 文档选择和内容展示卡片 */}
                   {selectedGraph && (
-                    <Card size="small" title="📄 文档内容" style={{ marginTop: 16 }}>
+                    <Card size="small" title="📄 文档内容" style={{ marginTop: 16, background: '#ffffff' }}>
                       <div style={{ marginBottom: 16 }}>
                         <Select
                           placeholder="选择文档查看内容"
-                          style={{ width: '100%' }}
+                          style={{ width: '100%', background: '#ffffff' }}
                           value={selectedDocument?.id}
                           onChange={(value) => {
                             const doc = documents.find(d => d.id === value);
@@ -1566,7 +1577,8 @@ const GraphVisualization: React.FC = () => {
                             maxHeight: '300px',
                             overflow: 'auto',
                             padding: '12px',
-                            backgroundColor: '#f5f5f5',
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #e8e8e8',
                             borderRadius: '6px',
                             fontSize: '12px',
                             lineHeight: '1.5',
