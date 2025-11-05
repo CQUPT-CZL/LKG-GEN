@@ -6,7 +6,6 @@ import {
   Typography,
   Select,
   Slider,
-  Switch,
   Tooltip,
   Drawer,
   Descriptions,
@@ -185,6 +184,8 @@ const GraphVisualization: React.FC = () => {
   const [edgeForm] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
+  // 精美模式：增强视觉风格（渐变背景、柔和曲线、阴影等）
+  const [elegantMode, setElegantMode] = useState<boolean>(true);
 
   // 拖拽相关的ref变量
   const dragStartTime = useRef<number | null>(null);
@@ -560,8 +561,8 @@ const GraphVisualization: React.FC = () => {
 
     const hash = hashCode(type);
     const hue = hash % 360; // 色相：0-359
-    const saturation = 60 + (hash % 30); // 饱和度：60-89
-    const lightness = 50 + (hash % 20); // 亮度：50-69
+    const saturation = elegantMode ? 65 + (hash % 20) : 60 + (hash % 30); // 柔和的饱和度
+    const lightness = elegantMode ? 58 + (hash % 14) : 50 + (hash % 20); // 提升亮度
 
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
@@ -596,21 +597,21 @@ const GraphVisualization: React.FC = () => {
         shape: 'ellipse',
         size: nodeSize,
         font: {
-          size: showLabels ? 12 : 0,
+          size: showLabels ? (elegantMode ? 14 : 12) : 0,
           color: '#ffffff',
           face: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',
           strokeWidth: 0,
           align: 'center',
           vadjust: 0
         },
-        borderWidth: 2,
-        borderWidthSelected: 4,
+        borderWidth: elegantMode ? 1.5 : 2,
+        borderWidthSelected: elegantMode ? 3 : 4,
         shadow: {
-          enabled: false,
-          color: 'rgba(0,0,0,0.2)',
-          size: 7,
-          x: 3,
-          y: 3
+          enabled: elegantMode,
+          color: 'rgba(0,0,0,0.12)',
+          size: 12,
+          x: 2,
+          y: 2
         },
         widthConstraint: {
           minimum: 80,
@@ -626,35 +627,35 @@ const GraphVisualization: React.FC = () => {
       edges: {
         width: edgeWidth,
         color: {
-          color: '#cccccc',
-          highlight: '#FFC107',
-          hover: '#e0e0e0',
+          color: elegantMode ? '#bfbfbf' : '#cccccc',
+          highlight: elegantMode ? '#1890ff' : '#FFC107',
+          hover: elegantMode ? '#91d5ff' : '#e0e0e0',
           inherit: false
         },
         smooth: {
           enabled: true,
-          type: 'continuous',
-          roundness: 0.2
+          type: elegantMode ? 'cubicBezier' : 'continuous',
+          roundness: elegantMode ? 0.35 : 0.2
         },
         arrows: {
           to: { enabled: true, scaleFactor: 0.8 }
         },
         font: {
-          size: showLabels ? 12 : 0,
+          size: showLabels ? (elegantMode ? 12 : 11) : 0,
           align: 'middle',
           strokeWidth: 0,
-          color: '#888888'
+          color: elegantMode ? '#8c8c8c' : '#888888'
         }
       },
       physics: {
         enabled: physics,
         solver: 'forceAtlas2Based',
         forceAtlas2Based: {
-          gravitationalConstant: -50,
-          centralGravity: 0.01,
+          gravitationalConstant: elegantMode ? -35 : -50,
+          centralGravity: elegantMode ? 0.015 : 0.01,
           springLength: edgeLength,
-          springConstant: 0.08,
-          damping: 0.4,
+          springConstant: elegantMode ? 0.07 : 0.08,
+          damping: elegantMode ? 0.5 : 0.4,
           avoidOverlap: 1.0
         },
         stabilization: {
@@ -663,7 +664,7 @@ const GraphVisualization: React.FC = () => {
           onlyDynamicEdges: false,
           fit: true
         },
-        timestep: 0.35
+        timestep: elegantMode ? 0.4 : 0.35
       },
       interaction: {
         hover: true,
@@ -1475,11 +1476,16 @@ const GraphVisualization: React.FC = () => {
                   <Spin spinning={loading}>
                     <div
                       ref={networkRef}
+                      id="network-container"
                       style={{
                         width: '100%',
                         height: isFullscreen ? 'calc(100vh - 80px)' : '600px',
-                        border: '1px solid #d9d9d9',
-                        borderRadius: '6px'
+                        border: '1px solid #e8e8e8',
+                        borderRadius: 12,
+                        boxShadow: elegantMode ? '0 6px 24px rgba(0,0,0,0.08)' : 'none',
+                        background: elegantMode
+                          ? 'radial-gradient(1200px circle at 15% 35%, #f0f7ff 0%, #ffffff 40%, #fafafa 100%)'
+                          : 'transparent'
                       }}
                     />
                   </Spin>
@@ -1503,11 +1509,15 @@ const GraphVisualization: React.FC = () => {
                     <div style={{ marginBottom: 16 }}>
                       <Text strong>节点类型分布</Text>
                       <div style={{ marginTop: 8 }}>
-                        {Object.entries(stats.nodeTypes).map(([type, count]) => (
-                          <Tag key={type} color={getNodeColor(type)} style={{ marginBottom: 4 }}>
-                            {type}: {count}
-                          </Tag>
-                        ))}
+                        {Object.entries(stats.nodeTypes).map(([type, count]) => {
+                          const bg = getNodeColor(type);
+                          const textColor = getContrastingTextColor(bg);
+                          return (
+                            <Tag key={type} color={bg} style={{ marginBottom: 4, color: textColor, border: 'none' }}>
+                              {type}: {count}
+                            </Tag>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -1581,60 +1591,7 @@ const GraphVisualization: React.FC = () => {
                     </Card>
                   )}
 
-                  <Card size="small" title="视图控制" style={{ marginTop: 16 }}>
-                    <div style={{ marginBottom: 16 }}>
-                      <Text>节点大小</Text>
-                      <Slider
-                        min={10}
-                        max={50}
-                        value={nodeSize}
-                        onChange={setNodeSize}
-                        style={{ marginTop: 8 }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: 16 }}>
-                      <Text>边宽度</Text>
-                      <Slider
-                        min={1}
-                        max={5}
-                        value={edgeWidth}
-                        onChange={setEdgeWidth}
-                        style={{ marginTop: 8 }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: 16 }}>
-                      <Text>边长度</Text>
-                      <Slider
-                        min={20}
-                        max={150}
-                        value={edgeLength}
-                        onChange={setEdgeLength}
-                        style={{ marginTop: 8 }}
-                        marks={{
-                          20: '短',
-                          50: '中',
-                          100: '长',
-                          150: '很长'
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ marginBottom: 16 }}>
-                      <Space>
-                        <Text>显示标签</Text>
-                        <Switch checked={showLabels} onChange={setShowLabels} />
-                      </Space>
-                    </div>
-
-                    <div>
-                      <Space>
-                        <Text>物理引擎</Text>
-                        <Switch checked={physics} onChange={setPhysics} />
-                      </Space>
-                    </div>
-                  </Card>
+                  
                 </Col>
               )}
             </Row>
