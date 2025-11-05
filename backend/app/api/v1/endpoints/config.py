@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
 from pydantic import BaseModel
-from app.core.config import ENTITY_TYPES, RELATION_TYPES
+import app.core.config as core_config
 import json
 import os
 
@@ -34,8 +34,8 @@ def load_config_from_file() -> Dict[str, Any]:
     
     # 返回默认配置
     return {
-        "entity_types": ENTITY_TYPES,
-        "relation_types": RELATION_TYPES
+        "entity_types": core_config.ENTITY_TYPES,
+        "relation_types": core_config.RELATION_TYPES
     }
 
 def save_config_to_file(config: Dict[str, Any]) -> bool:
@@ -56,8 +56,8 @@ def get_knowledge_graph_config():
     try:
         config = load_config_from_file()
         return KnowledgeGraphConfig(
-            entity_types=config.get("entity_types", ENTITY_TYPES),
-            relation_types=config.get("relation_types", RELATION_TYPES)
+            entity_types=config.get("entity_types", core_config.ENTITY_TYPES),
+            relation_types=config.get("relation_types", core_config.RELATION_TYPES)
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取配置失败: {e}")
@@ -101,7 +101,7 @@ def get_entity_types():
     """
     try:
         config = load_config_from_file()
-        return EntityTypesConfig(entity_types=config.get("entity_types", ENTITY_TYPES))
+        return EntityTypesConfig(entity_types=config.get("entity_types", core_config.ENTITY_TYPES))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取实体类型失败: {e}")
 
@@ -138,7 +138,7 @@ def get_relation_types():
     """
     try:
         config = load_config_from_file()
-        return RelationTypesConfig(relation_types=config.get("relation_types", RELATION_TYPES))
+        return RelationTypesConfig(relation_types=config.get("relation_types", core_config.RELATION_TYPES))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取关系类型失败: {e}")
 
@@ -175,15 +175,15 @@ def reset_to_defaults():
     """
     try:
         default_config = {
-            "entity_types": ENTITY_TYPES,
-            "relation_types": RELATION_TYPES
+            "entity_types": core_config.ENTITY_TYPES,
+            "relation_types": core_config.RELATION_TYPES
         }
         
         if save_config_to_file(default_config):
             # 动态更新内存中的配置
             import app.core.config as config_module
-            config_module.ENTITY_TYPES = ENTITY_TYPES
-            config_module.RELATION_TYPES = RELATION_TYPES
+            config_module.ENTITY_TYPES = core_config.ENTITY_TYPES
+            config_module.RELATION_TYPES = core_config.RELATION_TYPES
             
             return {"message": "配置已重置为默认值"}
         else:

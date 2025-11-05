@@ -5,7 +5,7 @@ import random
 import re
 import json
 from .utils import call_llm
-from .config import RELATION_TYPES
+import app.core.config as config
 from app.services.prompt_service import get_re_prompt_content
 
 def extract_relations_from_entities(entities: List[Dict], text: str = None) -> List[Dict]:
@@ -75,7 +75,7 @@ def _extract_relations_with_llm(entities: List[Dict], text: str) -> List[Dict]:
         formatted_prompt = prompt_template.format(
             text=text,
             entities=json.dumps(entity_names, ensure_ascii=False, indent=2),
-            relation_types=json.dumps(RELATION_TYPES, ensure_ascii=False, indent=2)
+            relation_types=json.dumps(config.RELATION_TYPES, ensure_ascii=False, indent=2)
         )
         
         # 调用LLM
@@ -107,7 +107,7 @@ def _extract_relations_with_llm(entities: List[Dict], text: str) -> List[Dict]:
             description = relation.get('description', '')
             
             # 验证实体是否在合法列表中
-            if head in valid_entity_set and tail in valid_entity_set and relation_type in RELATION_TYPES:
+            if head in valid_entity_set and tail in valid_entity_set and relation_type in config.RELATION_TYPES:
                 valid_relations.append({
                     'source_name': head,
                     'target_name': tail,

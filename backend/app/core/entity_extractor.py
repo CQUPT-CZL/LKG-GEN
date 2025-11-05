@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 import random
 import re
 import json
-from app.core.config import ENTITY_TYPES
+import app.core.config as config
 from app.core.utils import call_llm
 from app.services.prompt_service import get_ner_prompt_content, get_entity_validation_prompt_content
 
@@ -54,7 +54,7 @@ def _extract_entities_with_llm(chunk_text: str, chunk_id: str = None) -> List[Di
             return []
         
         # 构建完整的 prompt
-        entity_types_str = "\n".join([f"- {entity_type}" for entity_type in ENTITY_TYPES])
+        entity_types_str = "\n".join([f"- {entity_type}" for entity_type in config.ENTITY_TYPES])
         prompt = prompt_template.format(
             entity_types=entity_types_str,
             text=chunk_text

@@ -93,7 +93,7 @@ def get_document_subgraph(driver: Driver, document_id: int) -> dict:
                     processed_rel_properties[key] = value
             
             relationships.append({
-                "id": processed_rel_properties.get("id", str(relation.id)),
+                "id": processed_rel_properties.get("id", str(getattr(relation, "element_id", getattr(relation, "id", "")))),
                 "type": processed_rel_properties.get("relation_type") or processed_rel_properties.get("type", "") or relation.type or "",
                 "description": processed_rel_properties.get("description", ""),
                 "start_node_id": start_node.get("id", ""),
@@ -178,7 +178,7 @@ def get_category_subgraph(driver: Driver, category_id: str) -> dict:
                     rel_properties[key] = value
             
             relationships.append({
-                "id": str(rel.id),
+                "id": str(getattr(rel, 'element_id', getattr(rel, 'id', ''))),
                 "type": rel_properties.get("relation_type") or rel_properties.get("type", "") or rel.type or "",
                 "description": rel_properties.get("description", ""),
                 "start_node_id": start_node["id"],
@@ -678,7 +678,7 @@ def get_graph_subgraph(driver: Driver, graph_id: str) -> dict:
                 else:
                     processed_r[k] = v
             rel_list.append({
-                "id": processed_r.get("id", str(getattr(r, 'id', ''))),
+                "id": processed_r.get("id", str(getattr(r, 'element_id', getattr(r, 'id', '')))),
                 # 标准化字段以兼容前端 - 优先使用属性中的relation_type
                 "relation_type": processed_r.get("relation_type") or processed_r.get("type", "") or getattr(r, 'type', None) or "",
                 "description": processed_r.get("description", ""),
