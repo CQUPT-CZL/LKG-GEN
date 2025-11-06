@@ -1,7 +1,7 @@
 # app/api/v1/router.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import documents, graphs, categories, entities, relations, config, prompts, ai_config, system_config
+from app.api.v1.endpoints import documents, graphs, categories, entities, relations, config, prompts, ai_config, system_config, chat
 
 # 创建v1版本的主路由
 api_router = APIRouter()
@@ -59,4 +59,10 @@ api_router.include_router(
     system_config.router,
     prefix="/system-config",
     tags=["system-config"]
+)
+
+api_router.include_router(
+    chat.router,
+    prefix="/chat",
+    tags=["chat"]
 )
