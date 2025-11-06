@@ -28,6 +28,41 @@
   border: 1px solid var(--border-color);
 }
 
+.chat-header {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--chat-container-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Center the content */
+}
+
+.graph-selector-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--chat-bg);
+  padding: 8px 16px;
+  border-radius: 12px;
+  color: #555;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.graph-selector-container .anticon {
+  font-size: 16px;
+  color: var(--primary-color);
+}
+
+.graph-selector {
+  min-width: 180px;
+}
+
+.graph-selector .ant-select-selector {
+  background-color: transparent !important;
+  padding-left: 8px !important;
+}
+
 .messages {
   flex-grow: 1;
   overflow-y: auto;

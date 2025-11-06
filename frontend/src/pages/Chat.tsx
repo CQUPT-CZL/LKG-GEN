@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Card, Input, Button, Space, Typography, message as antdMessage } from 'antd';
-import { SendOutlined, UserOutlined, RobotOutlined } from '@ant-design/icons';
-import { apiService } from '../services/api';
+import { Card, Input, Button, Space, Typography, message as antdMessage, Select } from 'antd';
+import { SendOutlined, UserOutlined, RobotOutlined, ApartmentOutlined } from '@ant-design/icons';
+import { apiService, Graph } from '../services/api';
 import './Chat.css';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+const { Option } = Select;
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -14,16 +15,38 @@ interface ChatMessage {
 }
 
 const Chat: React.FC = () => {
+  const [graphs, setGraphs] = useState<Graph[]>([]);
+  const [selectedGraph, setSelectedGraph] = useState<string | undefined>(undefined);
   const [conversationId, setConversationId] = useState<string>('mock-conv-001');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [sending, setSending] = useState<boolean>(false);
   const messagesRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const fetchGraphs = async () => {
+      try {
+        const graphData = await apiService.getGraphs();
+        setGraphs(graphData);
+        if (graphData.length > 0) {
+          setSelectedGraph(graphData[0].id);
+        }
+      } catch (error) {
+        antdMessage.error('获取图谱列表失败');
+      }
+    };
+
+    fetchGraphs();
+  }, []);
+
   const sendMessage = async () => {
     const trimmed = input.trim();
     if (!trimmed) {
       antdMessage.info('请输入内容');
+      return;
+    }
+    if (!selectedGraph) {
+      antdMessage.info('请选择一个图谱');
       return;
     }
     setSending(true);
@@ -32,7 +55,7 @@ const Chat: React.FC = () => {
     setInput('');
 
     try {
-      const res = await apiService.chatMock(trimmed, conversationId);
+      const res = await apiService.chatMock(trimmed, conversationId, selectedGraph);
       setConversationId(res.conversation_id);
       setMessages((prev) => [
         ...prev,
@@ -68,6 +91,25 @@ const Chat: React.FC = () => {
 
   return (
     <div className="chat-container">
+      <div className="chat-header">
+        <div className="graph-selector-container">
+          <ApartmentOutlined />
+          <span className="graph-selector-label">当前图谱:</span>
+          <Select
+            value={selectedGraph}
+            className="graph-selector"
+            onChange={setSelectedGraph}
+            loading={graphs.length === 0}
+            bordered={false}
+          >
+            {graphs.map((graph) => (
+              <Option key={graph.id} value={graph.id}>
+                {graph.name}
+              </Option>
+            ))}
+          </Select>
+        </div>
+      </div>
       <div className="messages" ref={messagesRef}>
         {messages.length === 0 && (
           <div className="empty">开始一条新的消息吧～</div>

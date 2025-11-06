@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_MODEL: str = "qwen-max"
 
+    # --- External KG Query Service ---
+    # 可通过环境变量覆盖，默认指向本地服务 http://localhost:8001/query
+    KG_QUERY_API_URL: str = "http://localhost:8001/query"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
