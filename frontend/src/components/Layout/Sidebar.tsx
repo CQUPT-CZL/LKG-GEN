@@ -14,6 +14,7 @@ import {
   FolderOutlined,
   FileTextOutlined
 } from '@ant-design/icons';
+import { MessageOutlined } from '@ant-design/icons';
 
 const { Sider } = Layout;
 
@@ -69,6 +70,11 @@ const Sidebar: React.FC = () => {
       key: '/visualization',
       icon: <EyeOutlined />,
       label: '图谱可视化',
+    },
+    {
+      key: '/chat',
+      icon: <MessageOutlined />,
+      label: '图谱问答',
     },
     {
       key: '/settings',

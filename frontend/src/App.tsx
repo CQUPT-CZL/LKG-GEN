@@ -14,6 +14,7 @@ import RelationManager from './pages/RelationManager';
 import CategoryManager from './pages/CategoryManager';
 import Settings from './pages/Settings';
 import EntityDisambiguation from './pages/EntityDisambiguation';
+import Chat from './pages/Chat';
 
 const { Content } = Layout;
 
@@ -33,6 +34,7 @@ function App() {
             <Route path="/documents" element={<DocumentManager />} />
             <Route path="/visualization" element={<GraphVisualization />} />
             <Route path="/disambiguation" element={<EntityDisambiguation />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/entities" element={<EntityManager />} />
             <Route path="/relations" element={<RelationManager />} />
             <Route path="/categories" element={<CategoryManager />} />
