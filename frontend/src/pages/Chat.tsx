@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Card, Input, Button, Space, Typography, message as antdMessage, Select } from 'antd';
+import { Card, Input, Button, Space, Typography, message as antdMessage, Select, Collapse } from 'antd';
 import { SendOutlined, UserOutlined, RobotOutlined, ApartmentOutlined } from '@ant-design/icons';
 import { apiService, Graph } from '../services/api';
 import './Chat.css';
@@ -10,7 +10,12 @@ const { Option } = Select;
 
 interface ChatMessage {
   role: 'user' | 'assistant';
-  text: string;
+  // 用户消息文本
+  text?: string;
+  // 助手结构化内容
+  centerEntity?: string;
+  answer?: string;
+  paths?: string[];
   timestamp: string;
 }
 
@@ -59,7 +64,13 @@ const Chat: React.FC = () => {
       setConversationId(res.conversation_id);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', text: res.reply, timestamp: res.created_at },
+        {
+          role: 'assistant',
+          centerEntity: res.center_entity,
+          answer: res.answer,
+          paths: res.paths ?? [],
+          timestamp: res.created_at,
+        },
       ]);
     } catch (err) {
       antdMessage.error('发送失败，请检查后端服务是否启动');
@@ -123,10 +134,28 @@ const Chat: React.FC = () => {
             <div className="content">
               <div className="bubble">
                 {item.role === 'assistant' ? (
-                  <div
-                    className="md-content"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text) }}
-                  />
+                  <div className="assistant-content">
+                    {item.centerEntity && (
+                      <div className="center-entity"><strong>中心实体：</strong>{item.centerEntity}</div>
+                    )}
+                    {item.answer && (
+                      <div
+                        className="md-content"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(item.answer) }}
+                      />
+                    )}
+                    {item.paths && item.paths.length > 0 && (
+                      <Collapse ghost>
+                        <Collapse.Panel header="推理路径" key="paths">
+                          <ul className="paths-list">
+                            {item.paths.map((p, i) => (
+                              <li key={i}>{p}</li>
+                            ))}
+                          </ul>
+                        </Collapse.Panel>
+                      </Collapse>
+                    )}
+                  </div>
                 ) : (
                   <div className="text" style={{ whiteSpace: 'pre-wrap' }}>{item.text}</div>
                 )}

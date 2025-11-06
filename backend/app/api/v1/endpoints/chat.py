@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from datetime import datetime
 import httpx
+from typing import List, Optional
 from app.core.config import settings
 
 router = APIRouter()
@@ -14,7 +15,9 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    reply: str
+    answer: str
+    center_entity: Optional[str] = None
+    paths: Optional[List[str]] = None
     conversation_id: str
     created_at: str
 
@@ -28,7 +31,7 @@ def mock_chat(req: ChatRequest):
     """
     cid = req.conversation_id or "mock-conv-001"
 
-    # 调用外部知识图谱问答服务（端口 8001），并将结果转为前端需要的回复格式
+    # 调用外部知识图谱问答服务（端口 8001），并将结果转为前端需要的结构化格式
     try:
         payload: dict = {"query": req.message}
         if req.graph_id:
@@ -42,24 +45,21 @@ def mock_chat(req: ChatRequest):
         center_entity = data.get("center_entity")
         paths = data.get("paths")
 
-        extra = ""
-        if center_entity:
-            extra += f"\n中心实体：{center_entity}"
-        if paths:
-            paths_str = " | ".join(paths) if isinstance(paths, list) else str(paths)
-            extra += f"\n路径：{paths_str}"
-
-        reply_text = f"{answer}{extra}"
+        # 直接以结构化形式返回，供前端分别展示
     except Exception as e:
         # 外部服务不可用时，给出友好的降级提示
-        reply_text = (
+        answer = (
             f"外部问答服务暂不可用，请稍后再试。\n"
             f"原因：{e}\n"
             f"原始消息：『{req.message}』"
         )
+        center_entity = None
+        paths = []
 
     return ChatResponse(
-        reply=reply_text,
+        answer=answer,
+        center_entity=center_entity,
+        paths=paths if isinstance(paths, list) else None,
         conversation_id=cid,
         created_at=datetime.utcnow().isoformat() + "Z",
     )
