@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 import httpx
 from typing import List, Optional
 from app.core.config import settings
@@ -18,16 +18,18 @@ class ChatResponse(BaseModel):
     answer: str
     center_entity: Optional[str] = None
     paths: Optional[List[str]] = None
+    referenced_paths: Optional[List[str]] = []
+    visualization_base64: Optional[str] = None
     conversation_id: str
     created_at: str
 
 
-@router.post("/mock", response_model=ChatResponse)
-def mock_chat(req: ChatRequest):
+@router.post("/query", response_model=ChatResponse)
+def chat_query(req: ChatRequest):
     """
-    模拟聊天回复接口：接收用户消息并返回一个简单的模拟回答。
+    知识图谱问答接口：接收用户消息并返回基于知识图谱的回答。
 
-    前端可用于对话UI联调，后续可替换为真实LLM服务。
+    包含回答内容、中心实体、推理路径和可视化图片。
     """
     cid = req.conversation_id or "mock-conv-001"
 
@@ -44,6 +46,8 @@ def mock_chat(req: ChatRequest):
         answer = data.get("answer") or "未获取到答案。"
         center_entity = data.get("center_entity")
         paths = data.get("paths")
+        referenced_paths = data.get("referenced_paths") or []
+        visualization_base64 = data.get("visualization_base64")
 
         # 直接以结构化形式返回，供前端分别展示
     except Exception as e:
@@ -55,11 +59,15 @@ def mock_chat(req: ChatRequest):
         )
         center_entity = None
         paths = []
+        referenced_paths = []
+        visualization_base64 = None
 
     return ChatResponse(
         answer=answer,
         center_entity=center_entity,
         paths=paths if isinstance(paths, list) else None,
+        referenced_paths=referenced_paths if isinstance(referenced_paths, list) else [],
+        visualization_base64=visualization_base64,
         conversation_id=cid,
-        created_at=datetime.utcnow().isoformat() + "Z",
+        created_at=datetime.now(timezone.utc).isoformat(),
     )

@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Card, Input, Button, Space, Typography, message as antdMessage, Select, Collapse } from 'antd';
-import { SendOutlined, UserOutlined, RobotOutlined, ApartmentOutlined } from '@ant-design/icons';
+import { Card, Input, Button, Space, Typography, message as antdMessage, Select, Collapse, Image, Divider, Tag } from 'antd';
+import { SendOutlined, UserOutlined, RobotOutlined, ApartmentOutlined, PictureOutlined, NodeIndexOutlined } from '@ant-design/icons';
 import { apiService, Graph } from '../services/api';
 import './Chat.css';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
+const { Panel } = Collapse;
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -16,6 +17,8 @@ interface ChatMessage {
   centerEntity?: string;
   answer?: string;
   paths?: string[];
+  referencedPaths?: string[];
+  visualizationBase64?: string;
   timestamp: string;
 }
 
@@ -60,7 +63,7 @@ const Chat: React.FC = () => {
     setInput('');
 
     try {
-      const res = await apiService.chatMock(trimmed, conversationId, selectedGraph);
+      const res = await apiService.chatQuery(trimmed, conversationId, selectedGraph);
       setConversationId(res.conversation_id);
       setMessages((prev) => [
         ...prev,
@@ -69,6 +72,8 @@ const Chat: React.FC = () => {
           centerEntity: res.center_entity,
           answer: res.answer,
           paths: res.paths ?? [],
+          referencedPaths: res.referenced_paths ?? [],
+          visualizationBase64: res.visualization_base64,
           timestamp: res.created_at,
         },
       ]);
@@ -135,25 +140,104 @@ const Chat: React.FC = () => {
               <div className="bubble">
                 {item.role === 'assistant' ? (
                   <div className="assistant-content">
+                    {/* 中心实体标签 */}
                     {item.centerEntity && (
-                      <div className="center-entity"><strong>中心实体：</strong>{item.centerEntity}</div>
+                      <div className="center-entity-tag">
+                        <Tag icon={<NodeIndexOutlined />} color="blue" style={{ borderRadius: '6px', marginBottom: '12px' }}>
+                          中心实体: {item.centerEntity}
+                        </Tag>
+                      </div>
                     )}
+
+                    {/* 回答内容 */}
                     {item.answer && (
                       <div
                         className="md-content"
                         dangerouslySetInnerHTML={{ __html: renderMarkdown(item.answer) }}
                       />
                     )}
-                    {item.paths && item.paths.length > 0 && (
-                      <Collapse ghost>
-                        <Collapse.Panel header="推理路径" key="paths">
-                          <ul className="paths-list">
-                            {item.paths.map((p, i) => (
-                              <li key={i}>{p}</li>
-                            ))}
-                          </ul>
-                        </Collapse.Panel>
-                      </Collapse>
+
+                    {/* 参考内容 - 包含可视化图片和参考路径 */}
+                    {((item.visualizationBase64) || (item.referencedPaths && item.referencedPaths.length > 0) || (item.paths && item.paths.length > 0)) && (
+                      <Collapse
+                        ghost
+                        style={{ marginTop: '12px' }}
+                        items={[{
+                          key: 'reference',
+                          label: (
+                            <Space>
+                              <Text strong style={{ color: '#595959', fontSize: '13px' }}>📚 参考内容</Text>
+                              {(item.visualizationBase64 || ((item.referencedPaths && item.referencedPaths.length > 0) || (item.paths && item.paths.length > 0))) && (
+                                <Tag color="blue" style={{ borderRadius: '4px' }}>
+                                  {[item.visualizationBase64 ? 1 : 0, (item.referencedPaths?.length || item.paths?.length || 0)].reduce((a, b) => a + (b > 0 ? 1 : 0), 0)} 项
+                                </Tag>
+                              )}
+                            </Space>
+                          ),
+                          children: (
+                            <div className="reference-content">
+                              {/* 可视化图片 */}
+                              {item.visualizationBase64 && (
+                                <div className="visualization-section">
+                                  <div style={{ marginBottom: '12px' }}>
+                                    <Space>
+                                      <PictureOutlined style={{ color: '#1890ff', fontSize: '14px' }} />
+                                      <Text strong style={{ color: '#595959', fontSize: '13px' }}>知识图谱可视化</Text>
+                                    </Space>
+                                  </div>
+                                  <div className="visualization-image-wrapper">
+                                    <Image
+                                      src={`data:image/png;base64,${item.visualizationBase64}`}
+                                      alt="知识图谱可视化"
+                                      width="100%"
+                                      style={{
+                                        borderRadius: '8px',
+                                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                                        cursor: 'pointer'
+                                      }}
+                                      preview={{
+                                        mask: (
+                                          <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                          }}>
+                                            <PictureOutlined style={{ fontSize: '28px', color: 'white' }} />
+                                            <span style={{ color: 'white', fontSize: '14px' }}>点击查看大图</span>
+                                          </div>
+                                        )
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 参考路径 */}
+                              {((item.referencedPaths && item.referencedPaths.length > 0) || (item.paths && item.paths.length > 0)) && (
+                                <div className="paths-section" style={{ marginTop: item.visualizationBase64 ? '16px' : '0' }}>
+                                  <div style={{ marginBottom: '8px' }}>
+                                    <Space>
+                                      <Text strong style={{ color: '#595959', fontSize: '13px' }}>推理路径</Text>
+                                      <Tag color="geekblue" style={{ borderRadius: '4px', fontSize: '12px' }}>
+                                        {(item.referencedPaths?.length || item.paths?.length || 0)} 条
+                                      </Tag>
+                                    </Space>
+                                  </div>
+                                  <ul className="paths-list">
+                                    {/* 优先显示 referencedPaths，如果没有则显示 paths */}
+                                    {(item.referencedPaths && item.referencedPaths.length > 0 ? item.referencedPaths : item.paths || []).map((p, i) => (
+                                      <li key={i} style={{ marginBottom: '8px', color: '#595959' }}>
+                                        <Text style={{ fontSize: '13px' }}>{p}</Text>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        }]}
+                      />
                     )}
                   </div>
                 ) : (

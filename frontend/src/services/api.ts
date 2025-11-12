@@ -488,13 +488,21 @@ export const apiService = {
     api.put('/system-config/chunk-strategy', config),
   getChunkStrategyOptions: (): Promise<ChunkStrategyOptionsResponse> => 
     api.get('/system-config/chunk-strategy/options'),
-  // Chat 模拟接口
-  chatMock: (
+  // Chat 问答接口
+  chatQuery: (
     message: string,
     conversationId?: string,
     graphId?: string
-  ): Promise<{ answer: string; center_entity?: string; paths?: string[]; conversation_id: string; created_at: string }> =>
-    api.post('/chat/mock', { message, conversation_id: conversationId, graph_id: graphId }),
+  ): Promise<{
+    answer: string;
+    center_entity?: string;
+    paths?: string[];
+    referenced_paths?: string[];
+    visualization_base64?: string;
+    conversation_id: string;
+    created_at: string;
+  }> =>
+    api.post('/chat/query', { message, conversation_id: conversationId, graph_id: graphId }),
 };
 
 export default api;
