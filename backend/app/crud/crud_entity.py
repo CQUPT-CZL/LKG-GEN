@@ -231,28 +231,38 @@ def merge_entities(driver: Driver, source_entity_id: str, target_entity_id: str,
                 merged_name = target_entity.get("name")
             
             # 6. 更新所有指向源实体的关系
-            update_relations_query = """
-            MATCH (source:Entity {id: $source_id})-[r:RELATION]-(other:Entity)
-            WHERE other.id <> $target_id
-            WITH r, other, type(r) as rel_type, properties(r) as rel_props
+            # 6a. 处理自引用的关系
+            update_self_loop_query = """
+            MATCH (source:Entity {id: $source_id})-[r:RELATION]->(source)
+            WITH r, properties(r) as props
+            MATCH (target:Entity {id: $target_id})
+            CREATE (target)-[new_r:RELATION]->(target)
+            SET new_r = props
             DELETE r
-            WITH other, rel_type, rel_props
+            """
+            tx.run(update_self_loop_query, source_id=source_entity_id, target_id=target_entity_id)
+
+            # 6b. 更新其他出向关系
+            update_relations_query = """
+            MATCH (source:Entity {id: $source_id})-[r:RELATION]->(other:Entity) 
+            WHERE other.id <> $source_id AND other.id <> $target_id
+            WITH r, other, properties(r) as props
             MATCH (target:Entity {id: $target_id})
             CREATE (target)-[new_r:RELATION]->(other)
-            SET new_r = rel_props
+            SET new_r = props
+            DELETE r
             """
             tx.run(update_relations_query, source_id=source_entity_id, target_id=target_entity_id)
             
             # 7. 更新反向关系
             update_reverse_relations_query = """
             MATCH (other:Entity)-[r:RELATION]->(source:Entity {id: $source_id})
-            WHERE other.id <> $target_id
-            WITH r, other, type(r) as rel_type, properties(r) as rel_props
-            DELETE r
-            WITH other, rel_type, rel_props
+            WHERE other.id <> $target_id AND other.id <> $source_id
+            WITH r, other, properties(r) as props
             MATCH (target:Entity {id: $target_id})
             CREATE (other)-[new_r:RELATION]->(target)
-            SET new_r = rel_props
+            SET new_r = props
+            DELETE r
             """
             tx.run(update_reverse_relations_query, source_id=source_entity_id, target_id=target_entity_id)
             
@@ -260,13 +270,19 @@ def merge_entities(driver: Driver, source_entity_id: str, target_entity_id: str,
             update_doc_relations_query = """
             MATCH (doc:Document)-[r:HAS_ENTITY]->(source:Entity {id: $source_id})
             WITH doc, r, properties(r) as rel_props
-            DELETE r
-            WITH doc, rel_props
             MATCH (target:Entity {id: $target_id})
             MERGE (doc)-[new_r:HAS_ENTITY]->(target)
             SET new_r = rel_props
+            DELETE r
             """
             tx.run(update_doc_relations_query, source_id=source_entity_id, target_id=target_entity_id)
+
+            # 8.5. 删除源实体和目标实体之间的关系
+            delete_inter_rel_query = """
+            MATCH (source:Entity {id: $source_id})-[r]-(:Entity {id: $target_id})
+            DELETE r
+            """
+            tx.run(delete_inter_rel_query, source_id=source_entity_id, target_id=target_entity_id)
             
             # 9. 删除源实体
             delete_source_query = """
