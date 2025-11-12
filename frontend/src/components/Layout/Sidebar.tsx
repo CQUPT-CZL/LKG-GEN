@@ -94,15 +94,21 @@ const Sidebar: React.FC = () => {
       onCollapse={setCollapsed}
       theme="light"
       width={250}
+      style={{
+        boxShadow: '2px 0 12px rgba(0, 0, 0, 0.04)'
+      }}
     >
-      <div style={{ 
-        height: 64, 
-        display: 'flex', 
-        alignItems: 'center', 
+      <div style={{
+        height: 72,
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'center',
-        borderBottom: '1px solid #f0f0f0',
+        borderBottom: '1px solid #e8e8e8',
         fontWeight: 'bold',
-        fontSize: collapsed ? '16px' : '18px'
+        fontSize: collapsed ? '18px' : '20px',
+        background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)',
+        padding: '20px 0',
+        letterSpacing: '0.5px'
       }}>
         {collapsed ? '🧠' : '🧠 知识图谱系统'}
       </div>
@@ -112,7 +118,11 @@ const Sidebar: React.FC = () => {
         defaultOpenKeys={['builder', 'manager']}
         items={menuItems}
         onClick={handleMenuClick}
-        style={{ borderRight: 0, height: 'calc(100vh - 64px)' }}
+        style={{
+          borderRight: 0,
+          height: 'calc(100vh - 72px)',
+          paddingTop: '8px'
+        }}
       />
     </Sider>
   );

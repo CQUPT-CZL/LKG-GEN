@@ -105,68 +105,122 @@ const Dashboard: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2}>📊 知识图谱平台控制台</Title>
-        <Paragraph>欢迎使用知识图谱平台，在这里您可以管理文档、构建知识图谱并进行可视化分析。</Paragraph>
+      <div style={{ marginBottom: 32 }}>
+        <Title level={2} style={{ marginBottom: 8, color: '#262626', fontWeight: 600 }}>📊 知识图谱平台控制台</Title>
+        <Paragraph style={{ color: '#8c8c8c', fontSize: '14px' }}>欢迎使用知识图谱平台，在这里您可以管理文档、构建知识图谱并进行可视化分析。</Paragraph>
       </div>
 
       {/* 统计卡片 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      <Row gutter={[20, 20]} style={{ marginBottom: 32 }}>
         <Col xs={24} sm={12} md={6}>
-          <Card>
+          <Card
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #f0f0f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)'
+            }}
+            hoverable
+          >
             <Statistic
-              title="知识图谱总数"
+              title={<span style={{ color: '#8c8c8c', fontSize: '14px' }}>知识图谱总数</span>}
               value={graphs.length}
-              prefix={<NodeIndexOutlined style={{ color: '#1890ff' }} />}
+              prefix={<NodeIndexOutlined style={{ color: '#1890ff', fontSize: '20px' }} />}
+              valueStyle={{ color: '#262626', fontSize: '28px', fontWeight: 600 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card>
+          <Card
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #f0f0f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)'
+            }}
+            hoverable
+          >
             <Statistic
-              title="文档总数"
+              title={<span style={{ color: '#8c8c8c', fontSize: '14px' }}>文档总数</span>}
               value={documents.length}
-              prefix={<FileTextOutlined style={{ color: '#52c41a' }} />}
+              prefix={<FileTextOutlined style={{ color: '#52c41a', fontSize: '20px' }} />}
+              valueStyle={{ color: '#262626', fontSize: '28px', fontWeight: 600 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card>
+          <Card
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #f0f0f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)'
+            }}
+            hoverable
+          >
             <Statistic
-              title="已完成文档"
+              title={<span style={{ color: '#8c8c8c', fontSize: '14px' }}>已完成文档</span>}
               value={documents.filter(doc => doc.status === 'COMPLETED').length}
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              prefix={<CheckCircleOutlined style={{ color: '#52c41a', fontSize: '20px' }} />}
+              valueStyle={{ color: '#262626', fontSize: '28px', fontWeight: 600 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card>
+          <Card
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #f0f0f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)'
+            }}
+            hoverable
+          >
             <Statistic
-              title="处理中文档"
+              title={<span style={{ color: '#8c8c8c', fontSize: '14px' }}>处理中文档</span>}
               value={documents.filter(doc => doc.status === 'PROCESSING').length}
-              prefix={<RocketOutlined style={{ color: '#faad14' }} />}
+              prefix={<RocketOutlined style={{ color: '#faad14', fontSize: '20px' }} />}
+              valueStyle={{ color: '#262626', fontSize: '28px', fontWeight: 600 }}
             />
           </Card>
         </Col>
       </Row>
 
       {/* 主要功能区 */}
-      <Row gutter={[16, 16]}>
+      <Row gutter={[20, 20]}>
         <Col xs={24} lg={12}>
-          <Card 
-            title={<><DatabaseOutlined /> 知识图谱</>}
+          <Card
+            title={
+              <Space>
+                <DatabaseOutlined style={{ color: '#1890ff', fontSize: '18px' }} />
+                <span style={{ fontSize: '16px', fontWeight: 600, color: '#262626' }}>知识图谱</span>
+              </Space>
+            }
             extra={
               <Space>
-                <Button 
-                  type="primary" 
+                <Button
+                  type="primary"
                   icon={<BuildOutlined />}
                   onClick={() => navigate('/manager')}
+                  style={{
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 8px rgba(24, 144, 255, 0.2)'
+                  }}
                 >
                   管理图谱
                 </Button>
               </Space>
             }
             loading={loading}
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #f0f0f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+            }}
           >
             <List
               dataSource={graphs}
@@ -195,18 +249,32 @@ const Dashboard: React.FC = () => {
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card 
-            title={<><FileTextOutlined /> 最近文档</>}
+          <Card
+            title={
+              <Space>
+                <FileTextOutlined style={{ color: '#52c41a', fontSize: '18px' }} />
+                <span style={{ fontSize: '16px', fontWeight: 600, color: '#262626' }}>最近文档</span>
+              </Space>
+            }
             extra={
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 icon={<UploadOutlined />}
                 onClick={() => setUploadModalVisible(true)}
+                style={{
+                  borderRadius: '8px',
+                  boxShadow: '0 2px 8px rgba(82, 196, 26, 0.2)'
+                }}
               >
                 上传文档
               </Button>
             }
             loading={loading}
+            style={{
+              borderRadius: '12px',
+              border: '1px solid #f0f0f0',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+            }}
           >
             <List
               dataSource={documents}
@@ -233,37 +301,66 @@ const Dashboard: React.FC = () => {
       </Row>
 
       {/* 快速操作 */}
-      <Card title="🚀 快速操作" style={{ marginTop: 16 }}>
-        <Row gutter={[16, 16]}>
+      <Card
+        title="🚀 快速操作"
+        style={{
+          marginTop: 20,
+          borderRadius: '12px',
+          border: '1px solid #f0f0f0',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+        }}
+      >
+        <Row gutter={[20, 20]}>
           <Col xs={24} sm={8}>
-            <Button 
-              type="dashed" 
-              block 
+            <Button
+              type="dashed"
+              block
               size="large"
-              icon={<BuildOutlined />}
+              icon={<BuildOutlined style={{ fontSize: '20px' }} />}
               onClick={() => navigate('/manager')}
+              style={{
+                borderRadius: '12px',
+                height: '80px',
+                fontSize: '16px',
+                borderWidth: '2px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
             >
               创建知识图谱
             </Button>
           </Col>
           <Col xs={24} sm={8}>
-            <Button 
-              type="dashed" 
-              block 
+            <Button
+              type="dashed"
+              block
               size="large"
-              icon={<UploadOutlined />}
+              icon={<UploadOutlined style={{ fontSize: '20px' }} />}
               onClick={() => setUploadModalVisible(true)}
+              style={{
+                borderRadius: '12px',
+                height: '80px',
+                fontSize: '16px',
+                borderWidth: '2px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
             >
               上传文档
             </Button>
           </Col>
           <Col xs={24} sm={8}>
-            <Button 
-              type="dashed" 
-              block 
+            <Button
+              type="dashed"
+              block
               size="large"
-              icon={<BarChartOutlined />}
+              icon={<BarChartOutlined style={{ fontSize: '20px' }} />}
               onClick={() => navigate('/visualization')}
+              style={{
+                borderRadius: '12px',
+                height: '80px',
+                fontSize: '16px',
+                borderWidth: '2px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
             >
               数据可视化
             </Button>

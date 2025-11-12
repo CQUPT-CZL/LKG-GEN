@@ -1,52 +1,54 @@
 /* Modern Chat UI Styles */
 
 :root {
-  --chat-bg: #f7f8fa;
+  --chat-bg: #f8f9fa;
   --chat-container-bg: #ffffff;
-  --user-bg: #eaf2ff;
-  --user-text: #333;
-  --assistant-bg: #f0f0f0;
-  --assistant-text: #333;
-  --border-color: #e0e0e0;
+  --user-bg: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
+  --user-text: #262626;
+  --assistant-bg: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+  --assistant-text: #262626;
+  --border-color: #e8e8e8;
   --input-bg: #fff;
-  --placeholder-text: #999;
-  --timestamp-text: #999;
-  --primary-color: #007bff;
-  --primary-hover-color: #0056b3;
-  --shadow-light: rgba(0, 0, 0, 0.05);
-  --shadow-medium: rgba(0, 0, 0, 0.1);
+  --placeholder-text: #8c8c8c;
+  --timestamp-text: #8c8c8c;
+  --primary-color: #1890ff;
+  --primary-hover-color: #40a9ff;
+  --shadow-light: rgba(0, 0, 0, 0.04);
+  --shadow-medium: rgba(0, 0, 0, 0.08);
 }
 
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px); /* Adjust based on your layout */
+  height: calc(100vh - 120px);
   background-color: var(--chat-container-bg);
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 24px var(--shadow-light);
+  box-shadow: 0 2px 8px var(--shadow-light), 0 4px 16px var(--shadow-medium);
   border: 1px solid var(--border-color);
 }
 
 .chat-header {
-  padding: 12px 24px;
+  padding: 16px 32px;
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--chat-container-bg);
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   display: flex;
   align-items: center;
-  justify-content: center; /* Center the content */
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
 }
 
 .graph-selector-container {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   background-color: var(--chat-bg);
-  padding: 8px 16px;
+  padding: 10px 20px;
   border-radius: 12px;
-  color: #555;
+  color: #595959;
   font-size: 14px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  border: 1px solid #f0f0f0;
 }
 
 .graph-selector-container .anticon {
@@ -109,25 +111,25 @@
 }
 
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
   flex-shrink: 0;
   background-color: var(--primary-color);
   color: white;
-  box-shadow: 0 2px 4px var(--shadow-light);
+  box-shadow: 0 2px 8px var(--shadow-light);
 }
 
 .user .avatar {
-  background-color: #1677ff;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
 }
 
 .assistant .avatar {
-  background-color: #52c41a;
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
 }
 
 .content {
@@ -144,23 +146,23 @@
 }
 
 .bubble {
-  padding: 12px 16px;
-  border-radius: 18px;
-  box-shadow: 0 4px 12px var(--shadow-light);
+  padding: 14px 18px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px var(--shadow-light);
   max-width: 100%;
   word-wrap: break-word;
 }
 
 .user .bubble {
-  background-color: var(--user-bg);
+  background: var(--user-bg);
   color: var(--user-text);
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 6px;
 }
 
 .assistant .bubble {
-  background-color: var(--assistant-bg);
+  background: var(--assistant-bg);
   color: var(--assistant-text);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: 6px;
 }
 
 .timestamp {
@@ -171,12 +173,13 @@
 }
 
 .input-area {
-  padding: 16px 24px;
+  padding: 20px 32px;
   border-top: 1px solid var(--border-color);
-  background-color: var(--chat-container-bg);
+  background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.02);
 }
 
 .input-area .ant-input-textarea-wrapper {
@@ -200,18 +203,21 @@
 
 .input-area .ant-btn-primary {
   border-radius: 12px;
-  height: 44px;
-  width: 44px;
+  height: 48px;
+  width: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
-  transition: background-color 0.2s, box-shadow 0.2s;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
 }
 
 .input-area .ant-btn-primary:hover {
-  box-shadow: 0 6px 12px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.35);
+  transform: translateY(-1px);
 }
 
 .typing .bubble {

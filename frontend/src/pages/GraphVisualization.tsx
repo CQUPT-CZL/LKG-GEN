@@ -1375,7 +1375,7 @@ const GraphVisualization: React.FC = () => {
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card
-            title={!isFullscreen ? <Title level={3}>🔍 图谱可视化</Title> : null}
+            title={!isFullscreen ? <Title level={3} style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>🔍 图谱可视化</Title> : null}
             extra={
               !isFullscreen ? (
                 <Space>
@@ -1450,9 +1450,9 @@ const GraphVisualization: React.FC = () => {
                   size="small"
                   title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>图谱视图</span>
+                      <span style={{ fontSize: '16px', fontWeight: 600 }}>图谱视图</span>
                       {entitySubgraphMode && currentEntityId && (
-                        <Tag color="blue">
+                        <Tag color="blue" style={{ borderRadius: '6px' }}>
                           🎯 实体子图: {currentEntityId}
                         </Tag>
                       )}
@@ -1466,6 +1466,7 @@ const GraphVisualization: React.FC = () => {
                           icon={<ReloadOutlined />}
                           onClick={resetToOriginalView}
                           size="small"
+                          style={{ borderRadius: '8px' }}
                         >
                           退出子图模式
                         </Button>
@@ -1477,29 +1478,35 @@ const GraphVisualization: React.FC = () => {
                         prefix={<SearchOutlined />}
                       />
                       <Tooltip title="放大">
-                        <Button icon={<ZoomInOutlined />} onClick={handleZoomIn} />
+                        <Button icon={<ZoomInOutlined />} onClick={handleZoomIn} style={{ borderRadius: '8px' }} />
                       </Tooltip>
                       <Tooltip title="缩小">
-                        <Button icon={<ZoomOutOutlined />} onClick={handleZoomOut} />
+                        <Button icon={<ZoomOutOutlined />} onClick={handleZoomOut} style={{ borderRadius: '8px' }} />
                       </Tooltip>
                       <Tooltip title={isFullscreen ? "退出全屏" : "全屏显示"}>
                         <Button
                           icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
                           onClick={handleFullscreen}
+                          style={{ borderRadius: '8px' }}
                         />
                       </Tooltip>
                       <Tooltip title="重置视图">
-                        <Button icon={<ReloadOutlined />} onClick={handleReset} />
+                        <Button icon={<ReloadOutlined />} onClick={handleReset} style={{ borderRadius: '8px' }} />
                       </Tooltip>
                       <Tooltip title="下载图片">
-                        <Button icon={<DownloadOutlined />} onClick={handleDownload} />
+                        <Button icon={<DownloadOutlined />} onClick={handleDownload} style={{ borderRadius: '8px' }} />
                       </Tooltip>
                       <Tooltip title="设置">
-                        <Button icon={<SettingOutlined />} onClick={() => setDrawerVisible(true)} />
+                        <Button icon={<SettingOutlined />} onClick={() => setDrawerVisible(true)} style={{ borderRadius: '8px' }} />
                       </Tooltip>
 
                     </Space>
                   }
+                  style={{
+                    borderRadius: '12px',
+                    border: '1px solid #f0f0f0',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+                  }}
                 >
                   <Spin spinning={loading}>
                     <div
@@ -1509,8 +1516,9 @@ const GraphVisualization: React.FC = () => {
                         width: '100%',
                         height: isFullscreen ? 'calc(100vh - 80px)' : '600px',
                         border: '1px solid #e8e8e8',
-                        borderRadius: 8,
-                        background: '#ffffff',
+                        borderRadius: '12px',
+                        background: '#fafafa',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
                         transition: 'all 0.3s ease'
                       }}
                     />
@@ -1523,7 +1531,12 @@ const GraphVisualization: React.FC = () => {
                   <Card
                     size="small"
                     title="📊 图谱统计"
-                    style={{ background: '#ffffff', borderRadius: 8 }}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '12px',
+                      border: '1px solid #f0f0f0',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+                    }}
                   >
                     <Descriptions column={1} size="small">
                       <Descriptions.Item label="节点数量">
@@ -1612,7 +1625,17 @@ const GraphVisualization: React.FC = () => {
 
                   {/* 文档选择和内容展示卡片 */}
                   {selectedGraph && (
-                    <Card size="small" title="📄 文档内容" style={{ marginTop: 16, background: '#ffffff' }}>
+                    <Card
+                      size="small"
+                      title="📄 文档内容"
+                      style={{
+                        marginTop: 16,
+                        background: '#ffffff',
+                        borderRadius: '12px',
+                        border: '1px solid #f0f0f0',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+                      }}
+                    >
                       <div style={{ marginBottom: 16 }}>
                         <Select
                           placeholder="选择文档查看内容"
@@ -2018,30 +2041,32 @@ const GraphVisualization: React.FC = () => {
       {/* 浮动添加按钮 */}
       <div style={{
         position: 'fixed',
-        bottom: '24px',
-        right: '24px',
+        bottom: '32px',
+        right: '32px',
         zIndex: 1000
       }}>
         {/* 浮动菜单选项 */}
         {showFloatingMenu && (
           <div style={{
             position: 'absolute',
-            bottom: '70px',
+            bottom: '80px',
             right: '0',
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px'
+            gap: '12px'
           }}>
             <Button
               type="primary"
               icon={<NodeIndexOutlined />}
               onClick={handleAddEntity}
               style={{
-                borderRadius: '20px',
-                height: '40px',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                borderRadius: '24px',
+                height: '48px',
+                paddingLeft: '20px',
+                paddingRight: '20px',
+                boxShadow: '0 4px 16px rgba(24, 144, 255, 0.25)',
+                fontSize: '15px',
+                fontWeight: 500
               }}
             >
               ➕ 添加实体
@@ -2051,11 +2076,13 @@ const GraphVisualization: React.FC = () => {
               icon={<LinkOutlined />}
               onClick={handleAddRelation}
               style={{
-                borderRadius: '20px',
-                height: '40px',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                borderRadius: '24px',
+                height: '48px',
+                paddingLeft: '20px',
+                paddingRight: '20px',
+                boxShadow: '0 4px 16px rgba(24, 144, 255, 0.25)',
+                fontSize: '15px',
+                fontWeight: 500
               }}
             >
               🔗 添加关系
@@ -2068,15 +2095,15 @@ const GraphVisualization: React.FC = () => {
           type="primary"
           shape="circle"
           size="large"
-          icon={<PlusOutlined />}
+          icon={<PlusOutlined style={{ fontSize: '24px' }} />}
           onClick={handleFloatingButtonClick}
           style={{
-            width: '56px',
-            height: '56px',
-            fontSize: '20px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            width: '64px',
+            height: '64px',
+            fontSize: '24px',
+            boxShadow: '0 6px 20px rgba(24, 144, 255, 0.3)',
             transform: showFloatingMenu ? 'rotate(45deg)' : 'rotate(0deg)',
-            transition: 'transform 0.3s ease'
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}
         />
       </div>
