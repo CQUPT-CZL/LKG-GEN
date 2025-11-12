@@ -29,7 +29,6 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
   ReloadOutlined,
-  InfoCircleOutlined,
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
@@ -40,7 +39,7 @@ import {
 } from '@ant-design/icons';
 import { Network } from 'vis-network/standalone';
 import type { Data, Options, Node, Edge } from 'vis-network/standalone';
-import { apiService, Graph, Subgraph, Entity, Relationship, SourceResource, Category } from '../services/api';
+import { apiService, Graph, Subgraph, Relationship, SourceResource, Category } from '../services/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -160,14 +159,10 @@ const GraphVisualization: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [nodeSize, setNodeSize] = useState(25);
-  const [edgeWidth, setEdgeWidth] = useState(2);
-  const [edgeLength, setEdgeLength] = useState(50);
-  const [showLabels, setShowLabels] = useState(true);
-  const [physics, setPhysics] = useState(true);
+  const [nodeSize] = useState(25);
+  const [springLength, setSpringLength] = useState(200); // 默认适中长度
   // 点击节点进入子图模式开关（默认开启）
-  const [clickToSubgraph, setClickToSubgraph] = useState<boolean>(true);
+  const [clickToSubgraph] = useState<boolean>(true);
 
   // 拖拽合并相关状态
   const [dragMergeVisible, setDragMergeVisible] = useState(false);
@@ -184,8 +179,6 @@ const GraphVisualization: React.FC = () => {
   const [edgeForm] = Form.useForm();
   const networkRef = useRef<HTMLDivElement>(null);
   const networkInstance = useRef<Network | null>(null);
-  // 精美模式：增强视觉风格（渐变背景、柔和曲线、阴影等）
-  const [elegantMode, setElegantMode] = useState<boolean>(true);
 
   // 拖拽相关的ref变量
   const dragStartTime = useRef<number | null>(null);
@@ -197,7 +190,7 @@ const GraphVisualization: React.FC = () => {
   // 实体子图相关状态
   const [entitySubgraphMode, setEntitySubgraphMode] = useState(false);
   const [currentEntityId, setCurrentEntityId] = useState<string | null>(null);
-  let allNodes: any = []
+  // let allNodes: any = []; // 未使用的变量
 
   // 全屏状态
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -278,7 +271,7 @@ const GraphVisualization: React.FC = () => {
     if (networkData.nodes && networkData.nodes.length > 0 && networkRef.current) {
       initializeNetwork();
     }
-  }, [networkData, nodeSize, edgeWidth, edgeLength, showLabels, physics]);
+  }, [networkData, nodeSize, springLength]);
 
   const loadGraphs = async () => {
     try {
@@ -385,17 +378,9 @@ const GraphVisualization: React.FC = () => {
 
       // 去重处理：避免center_entity和entities中的重复节点
       const allEntities = [entitySubgraphResponse.center_entity, ...entitySubgraphResponse.entities];
-      allNodes = allEntities
       const uniqueEntities = allEntities.filter((entity, index, self) =>
         index === self.findIndex(e => e.id === entity.id)
       );
-
-      // 自动换行处理
-      uniqueEntities.forEach(entity => {
-        if (entity.name.length > 10) {
-          entity.name = entity.name.replace(/(.{10})/g, '$1\n');
-        }
-      });
 
       const subgraphData: Subgraph = {
         entities: uniqueEntities,
@@ -434,14 +419,6 @@ const GraphVisualization: React.FC = () => {
     setLoading(true);
     try {
       const subgraphData = await apiService.getGraphSubgraph(selectedGraph.id);
-
-      // 自动换行处理
-      subgraphData.entities.forEach(entity => {
-        if (entity.name.length > 10) {
-          entity.name = entity.name.replace(/(.{10})/g, '$1\n');
-        }
-      });
-
       setSubgraph(subgraphData);
     } catch (error) {
       console.error('加载图谱子图谱失败:', error);
@@ -474,18 +451,23 @@ const GraphVisualization: React.FC = () => {
     const nodes: GraphNode[] = subgraph.entities.map(entity => {
       const nodeType: string = (entity.entity_type as string) || (entity.properties?.entity_type as string) || 'Unknown';
       const nodeColor = getNodeColor(nodeType);
-      const fontColor = getContrastingTextColor(nodeColor);
 
-      // 根据label长度计算节点大小
-      const lines = entity.name.split('\n');
-      const lineCount = lines.length;
-      const maxLength = Math.max(...lines.map(line => line.length));
-      const value = 15 + lineCount * 5 + maxLength * 1.5;
+      // 处理标签：如果太长就截断并添加省略号
+      let displayLabel = entity.name;
+      if (displayLabel.length > 15) {
+        displayLabel = displayLabel.substring(0, 15) + '...';
+      }
+
+      // 根据实体重要性计算节点大小
+      const baseSize = 25;
+      const frequency = (entity as any).frequency || 1;
+      const value = baseSize + Math.log(frequency + 1) * 3;
 
       return {
         id: entity.id.toString(),
-        label: entity.name,
-        value: value, // 设置节点大小
+        label: displayLabel,
+        title: entity.name, // 完整名称作为tooltip
+        value: value,
         type: nodeType,
         properties: {
           ...(entity as any).properties,
@@ -506,12 +488,13 @@ const GraphVisualization: React.FC = () => {
           }
         },
         font: {
-          color: fontColor,
+          color: '#2c3e50', // 使用固定的深色，确保在所有背景上可见
           size: 14,
-          strokeWidth: 0.5,
-          strokeColor: fontColor === '#ffffff' ? '#000000' : '#ffffff'
+          strokeWidth: 3,
+          strokeColor: '#ffffff',
+          face: 'Arial, sans-serif'
         },
-        size: (entitySubgraphMode && currentEntityId === entity.id.toString()) ? (nodeSize + 10) : nodeSize
+        size: (entitySubgraphMode && currentEntityId === entity.id.toString()) ? (baseSize + 15) : baseSize
       } as GraphNode;
     });
 
@@ -535,7 +518,7 @@ const GraphVisualization: React.FC = () => {
         type: relType,
         description: description,
         title: titleText, // 添加悬浮提示
-        width: edgeWidth,
+        width: 2,
         arrows: 'to',
         properties: anyRel.properties
       } as GraphEdge;
@@ -617,76 +600,112 @@ const GraphVisualization: React.FC = () => {
 
     const options: Options = {
       nodes: {
-        shape: 'ellipse',
-        size: elegantMode ? 22 : 18,
-        borderWidth: elegantMode ? 3 : 2,
+        shape: 'dot',
+        size: 30,
+        borderWidth: 2,
+        borderWidthSelected: 3,
         font: {
           size: 14,
-          color: '#333',
-          strokeWidth: 0,
-          multi: 'html' // 开启自动换行
+          color: '#2c3e50',
+          face: 'Arial, sans-serif',
+          strokeWidth: 3,
+          strokeColor: '#ffffff',
+          multi: false,
+          background: 'rgba(255,255,255,0.8)',
+          align: 'center',
+          vadjust: 0
         },
-        shadow: elegantMode ? {
+        shadow: {
           enabled: true,
-          color: 'rgba(0,0,0,0.2)',
-          size: 10,
-          x: 0,
-          y: 4
-        } : { enabled: false },
+          color: 'rgba(0,0,0,0.12)',
+          size: 8,
+          x: 2,
+          y: 2
+        },
         scaling: {
-          min: 10,
-          max: 40,
+          min: 20,
+          max: 60,
           label: {
             enabled: true,
             min: 14,
-            max: 22
+            max: 18,
+            maxVisible: 18,
+            drawThreshold: 5
           }
+        },
+        shapeProperties: {
+          interpolation: true
         }
       },
       edges: {
         width: 2,
         color: {
-          color: 'rgba(0,0,0,0.4)',
-          highlight: '#1890ff',
-          hover: '#1890ff',
-          inherit: 'from',
-          opacity: 0.9
+          color: 'rgba(100,116,139,0.4)',
+          highlight: '#3b82f6',
+          hover: '#60a5fa',
+          inherit: false,
+          opacity: 0.8
         },
         arrows: {
-          to: { enabled: true, scaleFactor: 0.8, type: 'arrow' }
+          to: {
+            enabled: true,
+            scaleFactor: 0.8,
+            type: 'arrow'
+          }
         },
         smooth: {
           enabled: true,
           type: 'dynamic',
           roundness: 0.5
+        },
+        shadow: {
+          enabled: true,
+          color: 'rgba(0,0,0,0.06)',
+          size: 4,
+          x: 1,
+          y: 1
+        },
+        selectionWidth: 3,
+        font: {
+          size: 12,
+          color: '#666666',
+          background: 'rgba(255,255,255,0.9)',
+          strokeWidth: 0,
+          align: 'middle'
         }
       },
       physics: {
         enabled: true,
         solver: 'forceAtlas2Based',
         forceAtlas2Based: {
-          gravitationalConstant: -80,
-          centralGravity: 0.02,
-          springLength: 120,
-          springConstant: 0.05,
-          damping: 0.6,
-          avoidOverlap: 0.8
+          gravitationalConstant: -120,
+          centralGravity: 0.015,
+          springLength: springLength,
+          springConstant: 0.06,
+          damping: 0.75,
+          avoidOverlap: 0.9
         },
         stabilization: {
           enabled: true,
-          iterations: 200,
+          iterations: 450,
           fit: true
-        }
+        },
+        adaptiveTimestep: true,
+        minVelocity: 0.75
       },
       interaction: {
         hover: true,
-        tooltipDelay: 200,
+        tooltipDelay: 150,
         dragNodes: true,
         dragView: true,
         zoomView: true,
+        zoomSpeed: 0.8,
         keyboard: {
           enabled: true
-        }
+        },
+        navigationButtons: false,
+        hideEdgesOnDrag: false,
+        hideEdgesOnZoom: false
       },
       layout: {
         improvedLayout: true,
@@ -696,7 +715,7 @@ const GraphVisualization: React.FC = () => {
         }
       },
       manipulation: {
-        enabled: false, // 禁用编辑模式以支持拖拽合并功能
+        enabled: false,
       },
     };
 
@@ -706,7 +725,7 @@ const GraphVisualization: React.FC = () => {
 
     networkInstance.current = new Network(networkRef.current, networkData, options);
 
-    // 添加事件：稳定后禁用物理以固定布局，避免后续抖动并进一步减少重叠
+    // 添加事件：稳定后禁用物理以固定布局，避免后续抖动
     networkInstance.current.once('stabilizationIterationsDone', () => {
       if (networkInstance.current) {
         networkInstance.current.setOptions({ physics: { enabled: false } });
@@ -878,7 +897,7 @@ const GraphVisualization: React.FC = () => {
       }
     });
 
-    networkInstance.current.on('dragEnd', (params: any) => {
+    networkInstance.current.on('dragEnd', () => {
       // 清除所有定时器和状态
       if (dragHoverTimer.current) {
         clearTimeout(dragHoverTimer.current);
@@ -904,7 +923,6 @@ const GraphVisualization: React.FC = () => {
   };
 
   const handleSearch = (value: string) => {
-    setSearchTerm(value);
     if (networkInstance.current && value && networkData.nodes) {
       const nodes = networkData.nodes as GraphNode[];
       const matchingNodes = nodes.filter((node: GraphNode) =>
@@ -1491,12 +1509,9 @@ const GraphVisualization: React.FC = () => {
                         width: '100%',
                         height: isFullscreen ? 'calc(100vh - 80px)' : '600px',
                         border: '1px solid #e8e8e8',
-                        borderRadius: 12,
-                        boxShadow: elegantMode ? '0 6px 24px rgba(0,0,0,0.08)' : 'none',
-                        background: elegantMode
-                            ? 'radial-gradient(1200px circle at 15% 35%, #f0f7ff 0%, #ffffff 40%, #fafafa 100%)'
-                            : '#f5f5f5',
-                        transition: 'background-color 0.3s, border-color 0.3s'
+                        borderRadius: 8,
+                        background: '#ffffff',
+                        transition: 'all 0.3s ease'
                       }}
                     />
                   </Spin>
@@ -1505,17 +1520,51 @@ const GraphVisualization: React.FC = () => {
 
               {!isFullscreen && (
                 <Col span={6}>
-                  <Card size="small" title="图谱统计" style={{ background: '#ffffff' }}>
+                  <Card
+                    size="small"
+                    title="📊 图谱统计"
+                    style={{ background: '#ffffff', borderRadius: 8 }}
+                  >
                     <Descriptions column={1} size="small">
                       <Descriptions.Item label="节点数量">
-                        <Text strong>{stats.nodes}</Text>
+                        <Text strong style={{ fontSize: 18 }}>{stats.nodes}</Text>
                       </Descriptions.Item>
                       <Descriptions.Item label="边数量">
-                        <Text strong>{stats.edges}</Text>
+                        <Text strong style={{ fontSize: 18 }}>{stats.edges}</Text>
                       </Descriptions.Item>
                     </Descriptions>
 
-                    <Divider style={{ margin: '12px 0' }} />
+                    <Divider style={{ margin: '16px 0' }} />
+
+                    {/* 关系长度控制 */}
+                    <div style={{ marginBottom: 16 }}>
+                      <Text strong>关系长度</Text>
+                      <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>拖动滑块调整</Text>
+                      <div style={{ marginTop: 8, paddingRight: 8 }}>
+                        <Slider
+                          min={80}
+                          max={350}
+                          step={10}
+                          value={springLength}
+                          onChange={(value) => {
+                            setSpringLength(value);
+                            // 调整后需要重新初始化网络以应用新参数
+                            if (networkInstance.current && networkData.nodes) {
+                              // 重新构建网络，让新的springLength生效
+                              initializeNetwork();
+                            }
+                          }}
+                          marks={{
+                            80: '紧凑',
+                            200: '适中',
+                            350: '稀疏'
+                          }}
+                          tooltip={{ formatter: (value) => `${value}px` }}
+                        />
+                      </div>
+                    </div>
+
+                    <Divider style={{ margin: '16px 0' }} />
 
                     <div style={{ marginBottom: 16 }}>
                       <Text strong>节点类型分布</Text>
@@ -1524,7 +1573,18 @@ const GraphVisualization: React.FC = () => {
                           const bg = getNodeColor(type);
                           const textColor = getContrastingTextColor(bg);
                           return (
-                            <Tag key={type} color={bg} style={{ marginBottom: 4, color: textColor, border: 'none' }}>
+                            <Tag
+                              key={type}
+                              style={{
+                                background: bg,
+                                color: textColor,
+                                border: 'none',
+                                marginBottom: 6,
+                                marginRight: 6,
+                                borderRadius: 4,
+                                padding: '2px 8px'
+                              }}
+                            >
                               {type}: {count}
                             </Tag>
                           );
@@ -1536,7 +1596,13 @@ const GraphVisualization: React.FC = () => {
                       <Text strong>关系类型分布</Text>
                       <div style={{ marginTop: 8 }}>
                         {Object.entries(stats.edgeTypes).map(([type, count]) => (
-                          <Tag key={type} style={{ marginBottom: 4 }}>
+                          <Tag
+                            key={type}
+                            style={{
+                              marginBottom: 6,
+                              marginRight: 6
+                            }}
+                          >
                             {type}: {count}
                           </Tag>
                         ))}

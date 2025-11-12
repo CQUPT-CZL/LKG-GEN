@@ -187,18 +187,39 @@ const EntityDisambiguation: React.FC = () => {
     if (visibleSuggestions.length === 0) return <EmptyHint />;
     return (
       <div>
-        {visibleSuggestions.map(group => (
-          <Card key={group.key} size="small" style={{ marginBottom: 12 }}
-                title={<span>🧩 相似对（类型: {group.entity_type}） | 分数: {typeof group.score === 'number' ? group.score.toFixed(2) : '—'}</span>}
-                extra={
-                  <Space>
-                    <Button onClick={() => handleIgnore(group)}>忽略该对</Button>
-                    <Button type="primary" icon={<MergeCellsOutlined />} onClick={() => openMergeModal(group)}>合并该对</Button>
-                  </Space>
-                }>
-            <Row gutter={[12, 12]}>
+        {visibleSuggestions.map((group, index) => (
+          <Card
+            key={group.key}
+            size="small"
+            style={{
+              marginBottom: 16,
+              borderRadius: 8
+            }}
+            title={
+              <Space>
+                <Tag>#{index + 1}</Tag>
+                <span>🧩 相似对 · {group.entity_type}</span>
+                <Tag color="blue">
+                  相似度: {typeof group.score === 'number' ? (group.score * 100).toFixed(1) + '%' : '—'}
+                </Tag>
+              </Space>
+            }
+            extra={
+              <Space>
+                <Button onClick={() => handleIgnore(group)}>忽略该对</Button>
+                <Button type="primary" icon={<MergeCellsOutlined />} onClick={() => openMergeModal(group)}>
+                  合并该对
+                </Button>
+              </Space>
+            }
+          >
+            <Row gutter={[16, 16]}>
               <Col xs={24} md={12}>
-                <Card size="small" title={<span>实体 A</span>}>
+                <Card
+                  size="small"
+                  title={<span>实体 A</span>}
+                  style={{ background: '#fafafa' }}
+                >
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Text strong>{(group.a as any).name}</Text>
                     <Tag color="blue">{(group.a as any).entity_type}</Tag>
@@ -213,10 +234,14 @@ const EntityDisambiguation: React.FC = () => {
               </Col>
 
               <Col xs={24} md={12}>
-                <Card size="small" title={<span>实体 B</span>}>
+                <Card
+                  size="small"
+                  title={<span>实体 B</span>}
+                  style={{ background: '#fafafa' }}
+                >
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Text strong>{(group.b as any).name}</Text>
-                    <Tag color="blue">{(group.b as any).entity_type}</Tag>
+                    <Tag color="green">{(group.b as any).entity_type}</Tag>
                     {(group.b as any).description && (
                       <Text type="secondary" style={{ display: 'block' }}>
                         {(group.b as any).description}
@@ -234,65 +259,113 @@ const EntityDisambiguation: React.FC = () => {
   };
 
   const EmptyHint: React.FC = () => (
-    <Card size="small">
-      <Space>
-        <ExclamationCircleOutlined style={{ color: '#faad14' }} />
-        <Text type="secondary">未检测到歧义组或尚未执行检测</Text>
+    <Card
+      size="small"
+      style={{
+        borderRadius: 8,
+        border: '1px dashed #d9d9d9',
+        background: '#fafafa',
+        textAlign: 'center',
+        padding: '48px 24px'
+      }}
+    >
+      <Space direction="vertical" size="middle">
+        <ExclamationCircleOutlined style={{ fontSize: 48, color: '#faad14' }} />
+        <div>
+          <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
+            未检测到歧义组或尚未执行检测
+          </Text>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            请选择图谱并点击 MCP 检测 按钮开始检测
+          </Text>
+        </div>
       </Space>
     </Card>
   );
 
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2}>🧩 实体歧义消除</Title>
-        <Paragraph>
+    <div style={{ padding: '24px', background: '#f5f5f5', minHeight: '100vh' }}>
+      <div style={{
+        marginBottom: 24,
+        padding: '24px',
+        background: '#ffffff',
+        borderRadius: 8,
+        border: '1px solid #e8e8e8'
+      }}>
+        <Title level={2} style={{ marginBottom: 12 }}>🧩 实体歧义消除</Title>
+        <Paragraph style={{ marginBottom: 0, color: '#595959' }}>
           选择图谱（可选分支/分类），使用 MCP 嵌入相似度进行检测。对可能重复实体进行人工确认，并可在合并时编辑信息。
         </Paragraph>
       </div>
 
       {/* 选择器与动作 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <span>选择图谱：</span>
-          <Select
-            style={{ width: 240 }}
-            placeholder="请选择图谱"
-            value={selectedGraph || undefined}
-            onChange={(v) => setSelectedGraph(v)}
-            showSearch
-            allowClear
+      <Card style={{
+        marginBottom: 16,
+        borderRadius: 8,
+        border: '1px solid #e8e8e8'
+      }}>
+        <Space wrap size="large">
+          <div>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>选择图谱</Text>
+            <Select
+              style={{ width: 240 }}
+              placeholder="请选择图谱"
+              value={selectedGraph || undefined}
+              onChange={(v) => setSelectedGraph(v)}
+              showSearch
+              allowClear
+            >
+              {graphs.map(g => (
+                <Option key={g.id} value={g.id}>{g.name}</Option>
+              ))}
+            </Select>
+          </div>
+
+          <div>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>选择分支（分类）</Text>
+            <Select
+              style={{ width: 240 }}
+              placeholder="可选：选择分类作为分支"
+              value={selectedCategory || undefined}
+              onChange={(v) => setSelectedCategory(v)}
+              showSearch
+              allowClear
+            >
+              {categories.map(c => (
+                <Option key={c.id} value={c.id}>{c.name}</Option>
+              ))}
+            </Select>
+          </div>
+
+          <Divider type="vertical" style={{ height: 40 }} />
+
+          <div>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>检测方式</Text>
+            <Tag color="blue">MCP（嵌入相似度）</Tag>
+          </div>
+
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={onDetect}
+            loading={detecting}
+            size="large"
+            style={{ marginTop: 18 }}
           >
-            {graphs.map(g => (
-              <Option key={g.id} value={g.id}>{g.name}</Option>
-            ))}
-          </Select>
-
-          <span>选择分支（分类）：</span>
-          <Select
-            style={{ width: 240 }}
-            placeholder="可选：选择分类作为分支"
-            value={selectedCategory || undefined}
-            onChange={(v) => setSelectedCategory(v)}
-            showSearch
-            allowClear
-          >
-            {categories.map(c => (
-              <Option key={c.id} value={c.id}>{c.name}</Option>
-            ))}
-          </Select>
-
-          <Divider type="vertical" />
-          <Text type="secondary">检测方式：MCP（嵌入相似度）</Text>
-
-          <Button type="primary" icon={<SearchOutlined />} onClick={onDetect} loading={detecting}>
             MCP 检测
           </Button>
         </Space>
       </Card>
 
       {/* 检测结果 */}
-      <Card title={<span>✅ 当前建议（最多展示 10 条）</span>} style={{ marginTop: 16 }}>
+      <Card
+        title={<span>当前建议（最多展示 10 条）</span>}
+        style={{
+          marginTop: 16,
+          borderRadius: 8,
+          border: '1px solid #e8e8e8'
+        }}
+      >
         <DuplicateGroupsView />
       </Card>
 
