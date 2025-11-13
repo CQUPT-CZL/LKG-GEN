@@ -97,7 +97,7 @@ const EntityDisambiguation: React.FC = () => {
 
   const onDetect = async () => {
     if (!selectedGraph) {
-      message.warning('请先选择图谱用于 MCP 检测');
+      message.warning('请先选择图谱用于 Qwen Embedding 检测');
       return;
     }
     setDetecting(true);
@@ -108,7 +108,7 @@ const EntityDisambiguation: React.FC = () => {
       if (!groups || groups.length === 0) {
         message.success('✅ 未发现任何相似对建议');
       } else {
-        message.success('✅ 已获得 MCP 相似对建议（当前展示最多 10 条）');
+        message.success('✅ 已获得 Qwen Embedding 相似对建议（当前展示最多 10 条）');
       }
     } catch (error) {
       console.error('检测歧义失败:', error);
@@ -276,7 +276,7 @@ const EntityDisambiguation: React.FC = () => {
             未检测到歧义组或尚未执行检测
           </Text>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            请选择图谱并点击 MCP 检测 按钮开始检测
+            请选择图谱并点击 Qwen Embedding 检测 按钮开始检测
           </Text>
         </div>
       </Space>
@@ -341,7 +341,7 @@ const EntityDisambiguation: React.FC = () => {
 
           <div>
             <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>检测方式</Text>
-            <Tag color="blue">MCP（嵌入相似度）</Tag>
+            <Tag color="blue">Qwen Embedding</Tag>
           </div>
 
           <Button
@@ -352,7 +352,7 @@ const EntityDisambiguation: React.FC = () => {
             size="large"
             style={{ marginTop: 18 }}
           >
-            MCP 检测
+            检测
           </Button>
         </Space>
       </Card>
