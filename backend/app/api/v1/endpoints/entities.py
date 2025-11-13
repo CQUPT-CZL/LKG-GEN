@@ -9,7 +9,10 @@ from app.api import deps
 from app.schemas import entity as entity_schemas
 from pydantic import BaseModel
 from app.crud import crud_entity, crud_graph
+from app.core.logging_config import get_logger
 import asyncio
+
+logger = get_logger(__name__)
 
 try:
     from fastmcp import Client as MCPClient
@@ -54,8 +57,10 @@ def get_entities(
     """
     获取指定图谱的实体列表
     """
+    logger.info(f"获取实体列表: graph_id={graph_id}, skip={skip}, limit={limit}")
     try:
         entities = crud_entity.get_entities_by_graph(driver=driver, graph_id=graph_id, skip=skip, limit=limit)
+        logger.info(f"成功获取 {len(entities)} 个实体")
         return [
             entity_schemas.Entity(
                 id=entity["id"],
@@ -70,6 +75,7 @@ def get_entities(
             for entity in entities
         ]
     except Exception as e:
+        logger.error(f"获取实体列表失败: graph_id={graph_id}, error={str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取实体列表失败: {e}")
 
 @router.post("/", response_model=entity_schemas.Entity)
@@ -81,8 +87,10 @@ def create_entity(
     """
     创建新实体
     """
+    logger.info(f"创建实体: name={entity.name}, type={entity.entity_type}, graph_id={entity.graph_id}")
     try:
         created_entity = crud_graph.create_entity(driver=driver, entity=entity)
+        logger.info(f"实体创建成功: id={created_entity['id']}, name={created_entity['name']}")
         return entity_schemas.Entity(
             id=created_entity["id"],
             name=created_entity["name"],
@@ -96,6 +104,7 @@ def create_entity(
             document_ids=created_entity.get("document_ids", [])
         )
     except Exception as e:
+        logger.error(f"创建实体失败: name={entity.name}, error={str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"创建实体失败: {e}")
 
 @router.get("/{entity_id}", response_model=entity_schemas.Entity)
@@ -168,15 +177,19 @@ def delete_entity(
     """
     删除实体
     """
+    logger.info(f"删除实体: entity_id={entity_id}")
     try:
         success = crud_entity.delete_entity(driver=driver, entity_id=entity_id)
         if not success:
+            logger.warning(f"删除实体失败 - 实体不存在: entity_id={entity_id}")
             raise HTTPException(status_code=404, detail="实体不存在")
-        
+
+        logger.info(f"实体删除成功: entity_id={entity_id}")
         return {"message": "实体删除成功"}
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"删除实体失败: entity_id={entity_id}, error={str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"删除实体失败: {e}")
 
 
@@ -194,11 +207,16 @@ def merge_entities(
     - 合并频次
     - 删除源实体
     """
+    logger.info(
+        f"合并实体: source={merge_request.source_entity_id}, "
+        f"target={merge_request.target_entity_id}, name={merge_request.merged_name}"
+    )
     try:
         # 验证两个实体不能相同
         if merge_request.source_entity_id == merge_request.target_entity_id:
+            logger.warning(f"合并实体失败 - 源实体和目标实体相同: {merge_request.source_entity_id}")
             raise HTTPException(status_code=400, detail="源实体和目标实体不能相同")
-        
+
         # 执行合并操作
         merged_entity_data = crud_entity.merge_entities(
             driver=driver,
@@ -207,7 +225,12 @@ def merge_entities(
             merged_name=merge_request.merged_name,
             merged_description=merge_request.merged_description
         )
-        
+
+        logger.info(
+            f"实体合并成功: source={merge_request.source_entity_id} -> "
+            f"target={merge_request.target_entity_id}"
+        )
+
         # 构造返回的实体对象
         merged_entity = entity_schemas.Entity(
             id=merged_entity_data["id"],
@@ -220,18 +243,24 @@ def merge_entities(
             updated_at=convert_neo4j_datetime(merged_entity_data.get("updated_at")),
             chunk_ids=merged_entity_data.get("chunk_ids", [])
         )
-        
+
         return entity_schemas.EntityMergeResponse(
             success=True,
             message=f"实体合并成功，源实体 {merge_request.source_entity_id} 已合并到目标实体 {merge_request.target_entity_id}",
             merged_entity=merged_entity
         )
-        
+
     except ValueError as e:
+        logger.warning(f"实体合并失败 - 参数错误: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            f"实体合并失败: source={merge_request.source_entity_id}, "
+            f"target={merge_request.target_entity_id}, error={str(e)}",
+            exc_info=True
+        )
         raise HTTPException(status_code=500, detail=f"实体合并失败: {e}")
 
 

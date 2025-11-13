@@ -8,7 +8,9 @@ from app.api import deps
 from app.schemas import graph as graph_schemas
 from app.schemas import resource as resource_schemas
 from app.crud import crud_graph, crud_sqlite
+from app.core.logging_config import get_logger
 
+logger = get_logger(__name__)
 router = APIRouter()
 
 @router.post("/", response_model=graph_schemas.Graph)
@@ -20,10 +22,12 @@ def create_graph(
     """
     创建新的知识图谱
     """
+    logger.info(f"创建图谱: name={graph.name}")
     try:
         # 调用CRUD层创建图谱
         created_graph = crud_graph.create_knowledge_graph(driver=driver, graph=graph)
-        
+        logger.info(f"图谱创建成功: id={created_graph['id']}, name={created_graph['name']}")
+
         # 转换Neo4j节点为Pydantic模型
         return graph_schemas.Graph(
             id=created_graph["id"],
@@ -31,6 +35,7 @@ def create_graph(
             description=created_graph.get("description")
         )
     except Exception as e:
+        logger.error(f"创建图谱失败: name={graph.name}, error={str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"创建图谱失败: {e}")
 
 

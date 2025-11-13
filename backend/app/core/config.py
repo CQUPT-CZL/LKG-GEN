@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api"
     PROJECT_NAME: str = "Knowledge Graph Platform"
 
+    # --- Logging Settings ---
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOG_DIR: str = "logs"  # 日志文件目录
+    LOG_JSON_FORMAT: bool = False  # 是否使用JSON格式输出日志到文件
+    LOG_FILE_ENABLED: bool = True  # 是否启用文件日志
+    LOG_CONSOLE_ENABLED: bool = True  # 是否启用控制台日志
+
     # --- SQLite Database ---
     # 例如: "sqlite:///./kg_platform.db"
     SQLITE_DATABASE_URI: str
