@@ -19,10 +19,15 @@ Base = declarative_base()
 
 # 定义一个Python枚举类，用于文档状态
 class DocumentStatusEnum(enum.Enum):
-    pending = "pending"
-    processing = "processing"
-    completed = "completed"
-    failed = "failed"
+    pending = "pending"  # 等待处理
+    cleaning = "cleaning"  # 文档清洗中
+    chunking = "chunking"  # 文档分块中
+    extracting_entities = "extracting_entities"  # 实体提取中
+    disambiguating = "disambiguating"  # 实体消歧中
+    extracting_relations = "extracting_relations"  # 关系提取中
+    building_graph = "building_graph"  # 构建图谱中
+    completed = "completed"  # 处理完成
+    failed = "failed"  # 处理失败
 
 
 # 定义一个Python枚举类，用于三元组审核状态

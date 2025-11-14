@@ -24,39 +24,40 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
     """
     try:
         print(f"📄 开始处理子任务：文档 ID: {document_id}")
-        crud_sqlite.update_document_status(db_session, document_id=document_id, status="processing")
-        
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="pending")
+
         document = crud_sqlite.get_source_document(db_session, document_id=document_id)
         if not document:
             print(f"❌ 文档 ID: {document_id} 不存在")
             return
-            
+
         print(f"📖 文档信息: {document.filename} (文档ID: {document.id})")
-        
+
         # === 1. 文档内容净化 ===
         print("🧹 开始文档内容净化...")
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="cleaning")
         cleaned_content = clean_document_content(document.content)
         print(f"✅ 文档内容净化完成，净化后长度: {len(cleaned_content)} 字符")
         # print(cleaned_content)
-        
+
         # === 2. 真实文档分块 ===
         print("🔪 开始文档分块...")
-        
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="chunking")
+
         # 获取当前配置的分块策略
         strategy_str = crud_system_config.get_chunk_strategy(db_session)
         strategy = ChunkStrategy(strategy_str)
         print(f"📋 使用分块策略: {strategy.value}")
-        
+
         chunks = chunk_document_by_strategy(cleaned_content, strategy)
         print(f"✅ 文档分块完成，共生成 {len(chunks)} 个分块")
-        
+
         # === 3. 保存分块到SQLite数据库并提取实体 ===
+        print("📊 开始实体提取...")
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="extracting_entities")
         all_entities = {}  # 用于去重的实体字典
         all_entities_list = []  # 保存所有原始实体（包含chunk_id）
         chunk_entities_map = {}  # 保存每个chunk对应的实体列表
-        
-        # 第一阶段：对所有chunk进行实体提取
-        print("📊 第一阶段：开始实体提取...")
         for i, chunk in enumerate(chunks, 1):
             chunk_id = f"{document.id}_chunk_{i}"  # 生成分块ID
             print(f"🔍 处理第 {i} 个分块: {chunk[:50]}...")
@@ -97,7 +98,8 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
                     all_entities[entity_key]['frequency'] = all_entities[entity_key].get('frequency', 1) + 1
         
         # 第二阶段：对每个chunk进行关系提取
-        print("🔗 第二阶段：开始关系提取...")
+        print("🔗 开始关系提取...")
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="extracting_relations")
         all_relations = []
         for chunk_id, chunk_data in chunk_entities_map.items():
             entities = chunk_data['entities']
@@ -111,14 +113,16 @@ def _run_single_document_extraction(document_id: int, db_session, neo4j_driver, 
             else:
                 print(f"⚠️ {chunk_id} 实体数不足，跳过关系提取")
             
-        
+
         # === 3. 实体链接与消歧 ===
         print("🔗 开始实体链接与消歧(全图谱范围)...")
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="disambiguating")
         disambiguated_entities = disambiguate_entities_against_graph(all_entities, neo4j_driver, graph_id)
         print(f"✅ 实体消歧完成，最终实体数: {len(disambiguated_entities)}")
-        
+
         # === 4. 图谱入库 ===
         print("💾 开始图谱入库...")
+        crud_sqlite.update_document_status(db_session, document_id=document_id, status="building_graph")
         
         # 验证父节点（如果提供了parent_id）
         if parent_id:

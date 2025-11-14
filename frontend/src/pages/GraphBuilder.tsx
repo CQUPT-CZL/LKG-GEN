@@ -12,22 +12,14 @@ import {
   List,
   Tag,
   message,
-  Row,
-  Col,
   Form,
-  Input,
   Select,
-  Radio,
   TreeSelect
 } from 'antd';
 import {
   InboxOutlined,
   FileTextOutlined,
-  NodeIndexOutlined,
-  BranchesOutlined,
-  CheckCircleOutlined,
-  LoadingOutlined,
-  CloseCircleOutlined
+  LoadingOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import { apiService, Category } from '../services/api';
@@ -36,18 +28,8 @@ const { Title, Paragraph, Text } = Typography;
 const { Dragger } = Upload;
 const { Option } = Select;
 
-interface ProcessStep {
-  title: string;
-  description: string;
-  status: 'wait' | 'process' | 'finish' | 'error';
-  progress?: number;
-}
-
 interface BuildResult {
-  entities: number;
-  relations: number;
   documents: number;
-  processingTime: string;
 }
 
 interface DocumentWithType {
@@ -55,118 +37,69 @@ interface DocumentWithType {
   type: string;
 }
 
+interface DocumentStatus {
+  id: number;
+  filename: string;
+  status: string;
+  resource_type: string;
+}
+
+interface TaskStatus {
+  task_id: string;
+  status: string;
+  progress: number;
+  message: string;
+  result?: any;
+  documentStatuses?: DocumentStatus[];
+}
+
 const GraphBuilder: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [form] = Form.useForm();
   const [uploadedFiles, setUploadedFiles] = useState<DocumentWithType[]>([]);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [taskStatus, setTaskStatus] = useState<{ task_id: string; status: string; progress: number; message: string; result?: any } | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
   const [availableGraphs, setAvailableGraphs] = useState<any[]>([]);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [processSteps, setProcessSteps] = useState<ProcessStep[]>([
-    {
-      title: '📝 文档预处理',
-      description: '文档格式转换和预处理',
-      status: 'wait',
-      progress: 0
-    },
-    {
-      title: '🔪 文档分块',
-      description: '将文档切分为语义块',
-      status: 'wait',
-      progress: 0
-    },
-    {
-      title: '🏷️ 实体识别',
-      description: '识别文档中的实体',
-      status: 'wait',
-      progress: 0
-    },
-    {
-      title: '🔍 实体消歧',
-      description: '合并相似实体',
-      status: 'wait',
-      progress: 0
-    },
-    {
-      title: '🔗 关系抽取',
-      description: '提取实体间关系',
-      status: 'wait',
-      progress: 0
-    },
-    {
-      title: '🕸️ 图谱构建',
-      description: '生成最终知识图谱',
-      status: 'wait',
-      progress: 0
-    }
-  ]);
 
-  // 根据进度消息更新步骤状态
-  const updateProcessSteps = (progress: number, message: string) => {
-    setProcessSteps(prevSteps => {
-      const newSteps = [...prevSteps];
-      
-      // 根据进度百分比和消息内容判断当前步骤
-      if (message.includes('文档预处理') || message.includes('开始文档预处理')) {
-        newSteps[0].status = 'process';
-        newSteps[0].progress = Math.min(progress, 15);
-      } else if (message.includes('文档预处理完成')) {
-        newSteps[0].status = 'finish';
-        newSteps[0].progress = 100;
-      }
-      
-      if (message.includes('文档分块') || message.includes('开始文档分块')) {
-        newSteps[0].status = 'finish';
-        newSteps[1].status = 'process';
-        newSteps[1].progress = Math.min((progress - 15) * 100 / 15, 100);
-      } else if (message.includes('文本分块完成')) {
-        newSteps[1].status = 'finish';
-        newSteps[1].progress = 100;
-      }
-      
-      if (message.includes('实体识别') || message.includes('开始实体识别')) {
-        newSteps[1].status = 'finish';
-        newSteps[2].status = 'process';
-        newSteps[2].progress = Math.min((progress - 30) * 100 / 15, 100);
-      } else if (message.includes('实体识别完成')) {
-        newSteps[2].status = 'finish';
-        newSteps[2].progress = 100;
-      }
-      
-      if (message.includes('实体消歧') || message.includes('开始实体消歧')) {
-        newSteps[2].status = 'finish';
-        newSteps[3].status = 'process';
-        newSteps[3].progress = Math.min((progress - 45) * 100 / 10, 100);
-      } else if (message.includes('实体消歧完成')) {
-        newSteps[3].status = 'finish';
-        newSteps[3].progress = 100;
-      }
-      
-      if (message.includes('关系抽取') || message.includes('开始关系抽取')) {
-        newSteps[3].status = 'finish';
-        newSteps[4].status = 'process';
-        newSteps[4].progress = Math.min((progress - 55) * 100 / 30, 100);
-      } else if (message.includes('关系抽取完成')) {
-        newSteps[4].status = 'finish';
-        newSteps[4].progress = 100;
-      }
-      
-      if (message.includes('构建知识图谱') || message.includes('开始构建知识图谱')) {
-        newSteps[4].status = 'finish';
-        newSteps[5].status = 'process';
-        newSteps[5].progress = Math.min((progress - 85) * 100 / 15, 100);
-      } else if (message.includes('知识图谱构建完成')) {
-        newSteps[5].status = 'finish';
-        newSteps[5].progress = 100;
-      }
-      
-      return newSteps;
-    });
+  // 获取状态文本
+  const getStatusText = (status: string): string => {
+    const statusMap: { [key: string]: string } = {
+      'pending': '等待处理',
+      'cleaning': '文档清洗中',
+      'chunking': '文档分块中',
+      'extracting_entities': '实体提取中',
+      'disambiguating': '实体消歧中',
+      'extracting_relations': '关系提取中',
+      'building_graph': '构建图谱中',
+      'completed': '处理完成',
+      'failed': '处理失败'
+    };
+    return statusMap[status.toLowerCase()] || status;
+  };
+
+  // 获取状态标签
+  const getStatusTag = (status: string) => {
+    const statusConfig: { [key: string]: { color: string; icon?: any } } = {
+      'pending': { color: 'default' },
+      'cleaning': { color: 'processing', icon: <LoadingOutlined /> },
+      'chunking': { color: 'processing', icon: <LoadingOutlined /> },
+      'extracting_entities': { color: 'processing', icon: <LoadingOutlined /> },
+      'disambiguating': { color: 'processing', icon: <LoadingOutlined /> },
+      'extracting_relations': { color: 'processing', icon: <LoadingOutlined /> },
+      'building_graph': { color: 'processing', icon: <LoadingOutlined /> },
+      'completed': { color: 'success' },
+      'failed': { color: 'error' }
+    };
+
+    const config = statusConfig[status.toLowerCase()] || { color: 'default' };
+    return (
+      <Tag color={config.color} icon={config.icon}>
+        {getStatusText(status)}
+      </Tag>
+    );
   };
 
   // 处理图谱选择变化，加载该图谱下的分类
@@ -230,16 +163,16 @@ const GraphBuilder: React.FC = () => {
     return convertToTreeData(rootCategories);
   };
 
-  // 加载图谱列表函数
-  const loadAvailableGraphs = async () => {
-    try {
-      const graphs = await apiService.getGraphs();
-      setAvailableGraphs(graphs);
-    } catch (error) {
-      console.error('加载图谱列表失败:', error);
-      message.error('加载图谱列表失败');
-    }
-  };
+  // 加载图谱列表函数（当前未使用，保留供将来扩展）
+  // const loadAvailableGraphs = async () => {
+  //   try {
+  //     const graphs = await apiService.getGraphs();
+  //     setAvailableGraphs(graphs);
+  //   } catch (error) {
+  //     console.error('加载图谱列表失败:', error);
+  //     message.error('加载图谱列表失败');
+  //   }
+  // };
 
   // 加载可用图谱列表
   useEffect(() => {
@@ -289,10 +222,10 @@ const GraphBuilder: React.FC = () => {
   };
 
   // 根据分类ID获取分类路径的辅助函数 (暂时禁用)
-  const getCategoryPath = (categoryId: string, tree: Category | null): string | null => {
-    // 暂时不使用分类功能
-    return null;
-  };
+  // const getCategoryPath = (categoryId: string, tree: Category | null): string | null => {
+  //   // 暂时不使用分类功能
+  //   return null;
+  // };
 
   // 读取文件内容为文本
   const readFileAsText = (file: File): Promise<string> => {
@@ -308,37 +241,90 @@ const GraphBuilder: React.FC = () => {
 
   // 处理批量资源创建结果
   const handleBatchResult = (result: any) => {
-    // 直接显示结果，不需要模拟进度
-    setTaskStatus({
-      task_id: `batch_${Date.now()}`,
-      status: 'completed',
-      progress: 100,
-      message: `成功创建 ${result.success_count} 个资源，失败 ${result.failed_count} 个`,
-      result: {
-        statistics: {
-          entities_count: result.success_count * 10, // 估算数据
-          relations_count: result.success_count * 5,
-          processing_time: '实时处理'
+    // 保存上传成功的文档ID列表，用于轮询状态
+    const uploadedDocIds = result.created_resources.map((doc: any) => doc.id);
+
+    if (uploadedDocIds.length > 0) {
+      // 开始轮询文档状态
+      startPollingDocumentStatus(uploadedDocIds);
+    } else {
+      // 没有成功上传的文档，直接显示失败结果
+      setTaskStatus({
+        task_id: `batch_${Date.now()}`,
+        status: 'failed',
+        progress: 0,
+        message: '所有文档上传失败',
+        result: null
+      });
+      message.error('所有文档上传失败');
+    }
+  };
+
+  // 轮询文档状态
+  const startPollingDocumentStatus = async (documentIds: number[]) => {
+    const pollInterval = 2000; // 每2秒轮询一次
+    const maxPollingTime = 300000; // 最多轮询5分钟
+    const startTime = Date.now();
+
+    const checkStatus = async () => {
+      try {
+        // 调用批量查询状态接口
+        const statuses = await apiService.getBatchDocumentsStatus(documentIds);
+
+        // 统计各状态的文档数量
+        const completedCount = statuses.filter(s => s.status.toLowerCase() === 'completed').length;
+        const failedCount = statuses.filter(s => s.status.toLowerCase() === 'failed').length;
+
+        // 计算总体进度（基于完成和失败的文档数）
+        const finishedCount = completedCount + failedCount;
+        const totalCount = documentIds.length;
+        const progress = Math.round((finishedCount / totalCount) * 100);
+
+        // 更新状态显示，包括每个文档的详细状态
+        setTaskStatus({
+          task_id: `batch_${Date.now()}`,
+          status: finishedCount === totalCount ? 'completed' : 'processing',
+          progress: progress,
+          message: '正在处理文档...',
+          result: null,
+          documentStatuses: statuses  // 保存所有文档的状态信息
+        });
+
+        // 检查是否所有文档都处理完成
+        if (finishedCount === totalCount) {
+          // 所有文档处理完成
+          setCurrentStep(2);
+
+          setBuildResult({
+            documents: completedCount
+          });
+
+          if (completedCount > 0) {
+            message.success(`处理完成！成功处理 ${completedCount} 个文档`);
+          }
+          if (failedCount > 0) {
+            message.warning(`有 ${failedCount} 个文档处理失败`);
+          }
+
+          return; // 停止轮询
         }
+
+        // 检查是否超时
+        if (Date.now() - startTime > maxPollingTime) {
+          message.warning('文档处理超时，请稍后在文档管理页面查看处理结果');
+          return;
+        }
+
+        // 继续轮询
+        setTimeout(checkStatus, pollInterval);
+      } catch (error) {
+        console.error('轮询文档状态失败:', error);
+        message.error('获取文档状态失败');
       }
-    });
-    
-    // 标记所有步骤为完成
-    setProcessSteps(prevSteps => 
-      prevSteps.map(step => ({ ...step, status: 'finish', progress: 100 }))
-    );
-    
-    setCurrentStep(2);
-    setIsProcessing(false);
-    
-    setBuildResult({
-      entities: result.success_count * 10,
-      relations: result.success_count * 5,
-      documents: result.success_count,
-      processingTime: '实时处理'
-    });
-    
-    message.success(`知识图谱构建完成！成功处理 ${result.success_count} 个文档`);
+    };
+
+    // 开始第一次检查
+    checkStatus();
   };
 
   const startProcessing = async () => {
@@ -353,7 +339,6 @@ const GraphBuilder: React.FC = () => {
     }
 
     try {
-      setIsProcessing(true);
       setCurrentStep(1);
 
       // 准备批量资源数据
@@ -419,58 +404,19 @@ const GraphBuilder: React.FC = () => {
       } else if (error.code === 'NETWORK_ERROR') {
         errorMessage = '网络连接失败，请检查后端服务是否正常运行';
       }
-      
+
       message.error(errorMessage);
-      setIsProcessing(false);
       setCurrentStep(0);
+    } finally {
+      // 确保错误处理后的清理
     }
   };
 
   const resetProcess = () => {
     setCurrentStep(0);
     setUploadedFiles([]);
-    setIsProcessing(false);
     setBuildResult(null);
-    setTaskId(null);
     setTaskStatus(null);
-    setProcessSteps([
-      {
-        title: '📝 文档预处理',
-        description: '文档格式转换和预处理',
-        status: 'wait',
-        progress: 0
-      },
-      {
-        title: '🔪 文档分块',
-        description: '将文档切分为语义块',
-        status: 'wait',
-        progress: 0
-      },
-      {
-        title: '🏷️ 实体识别',
-        description: '识别文档中的实体',
-        status: 'wait',
-        progress: 0
-      },
-      {
-        title: '🔍 实体消歧',
-        description: '合并相似实体',
-        status: 'wait',
-        progress: 0
-      },
-      {
-        title: '🔗 关系抽取',
-        description: '提取实体间关系',
-        status: 'wait',
-        progress: 0
-      },
-      {
-        title: '🕸️ 图谱构建',
-        description: '生成最终知识图谱',
-        status: 'wait',
-        progress: 0
-      }
-    ]);
   };
 
   const mainSteps = [
@@ -621,113 +567,46 @@ const GraphBuilder: React.FC = () => {
                     '100%': '#87d068',
                   }}
                 />
-                <div style={{ marginTop: 16 }}>
-                  <Text>当前状态: {taskStatus.status}</Text>
-                  {taskStatus.message && (
-                    <div style={{ marginTop: 8 }}>
-                      <Text type="secondary">{taskStatus.message}</Text>
-                    </div>
-                  )}
+                <div style={{ marginTop: 16, textAlign: 'center' }}>
+                  <Text type="secondary">{taskStatus.message}</Text>
                 </div>
               </div>
             )}
 
-            <div style={{ marginBottom: 24 }}>
-              <Title level={5} style={{ marginBottom: 16 }}>📊 处理进度详情</Title>
-              {processSteps.map((step, index) => (
-                <Card key={index} size="small" style={{ marginBottom: 12 }}>
-                  <Row align="middle">
-                    <Col span={7}>
-                      <Space>
-                        {step.status === 'finish' && <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />}
-                        {step.status === 'process' && <LoadingOutlined style={{ color: '#1890ff', fontSize: 16 }} />}
-                        {step.status === 'error' && <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />}
-                        {step.status === 'wait' && <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: '#d9d9d9', display: 'inline-block' }} />}
-                        <Text strong style={{ 
-                          color: step.status === 'finish' ? '#52c41a' : 
-                                 step.status === 'process' ? '#1890ff' : 
-                                 step.status === 'error' ? '#ff4d4f' : '#8c8c8c'
-                        }}>
-                          {step.title}
-                        </Text>
-                      </Space>
-                    </Col>
-                    <Col span={9}>
-                      <Text type="secondary">{step.description}</Text>
-                    </Col>
-                    <Col span={8}>
-                      <Progress
-                        percent={step.progress || 0}
-                        size="small"
-                        status={
-                          step.status === 'process' ? 'active' : 
-                          step.status === 'error' ? 'exception' : 
-                          step.status === 'finish' ? 'success' : 'normal'
-                        }
-                        strokeColor={
-                          step.status === 'finish' ? '#52c41a' :
-                          step.status === 'process' ? '#1890ff' :
-                          step.status === 'error' ? '#ff4d4f' : '#d9d9d9'
-                        }
-                        showInfo={step.status !== 'wait'}
+            {/* 文档处理状态列表 */}
+            {taskStatus?.documentStatuses && taskStatus.documentStatuses.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <Title level={5}>📋 文档处理进度</Title>
+                <List
+                  dataSource={taskStatus.documentStatuses}
+                  renderItem={(doc: any) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={<FileTextOutlined />}
+                        title={doc.filename}
+                        description={getStatusText(doc.status)}
                       />
-                    </Col>
-                  </Row>
-                </Card>
-              ))}
-            </div>
+                      {getStatusTag(doc.status)}
+                    </List.Item>
+                  )}
+                  bordered
+                  size="small"
+                />
+              </div>
+            )}
           </div>
         )}
 
         {currentStep === 2 && buildResult && (
           <div>
-            <Title level={4}>✅ 构建完成</Title>
+            <Title level={4}>✅ 处理完成</Title>
             <Alert
-              message="知识图谱构建成功！"
-              description="文档已成功处理，知识图谱已生成。"
+              message="文档处理成功！"
+              description={`成功处理 ${buildResult.documents} 个文档`}
               type="success"
               showIcon
               style={{ marginBottom: 24 }}
             />
-
-            <Row gutter={[24, 24]}>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <div style={{ textAlign: 'center' }}>
-                    <NodeIndexOutlined style={{ fontSize: 32, color: '#1890ff', marginBottom: 8 }} />
-                    <div style={{ fontSize: 24, fontWeight: 'bold' }}>{buildResult.entities}</div>
-                    <div>实体数量</div>
-                  </div>
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <div style={{ textAlign: 'center' }}>
-                    <BranchesOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 8 }} />
-                    <div style={{ fontSize: 24, fontWeight: 'bold' }}>{buildResult.relations}</div>
-                    <div>关系数量</div>
-                  </div>
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <div style={{ textAlign: 'center' }}>
-                    <FileTextOutlined style={{ fontSize: 32, color: '#722ed1', marginBottom: 8 }} />
-                    <div style={{ fontSize: 24, fontWeight: 'bold' }}>{buildResult.documents}</div>
-                    <div>处理文档</div>
-                  </div>
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card>
-                  <div style={{ textAlign: 'center' }}>
-                    <CheckCircleOutlined style={{ fontSize: 32, color: '#fa8c16', marginBottom: 8 }} />
-                    <div style={{ fontSize: 24, fontWeight: 'bold' }}>{buildResult.processingTime}</div>
-                    <div>处理时间</div>
-                  </div>
-                </Card>
-              </Col>
-            </Row>
 
             <Divider />
             <Space size="large">
@@ -738,7 +617,7 @@ const GraphBuilder: React.FC = () => {
                 📊 管理图谱数据
               </Button>
               <Button onClick={resetProcess}>
-                🔄 重新构建
+                🔄 重新上传
               </Button>
             </Space>
           </div>

@@ -103,3 +103,4 @@ backend/.env.production.local
 # uv.lock
 # pnpm-lock.yaml
 backend_test/kg_platform.db
+backend/logs/*

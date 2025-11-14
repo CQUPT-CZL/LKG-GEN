@@ -1,6 +1,6 @@
 # app/api/v1/endpoints/documents.py
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks
 from typing import List
@@ -126,6 +126,31 @@ def create_resources(
         raise HTTPException(status_code=500, detail=f"批量创建资源失败: {e}")
 
 
+@router.post("/batch-status")
+def get_batch_documents_status(
+    *,
+    db: Session = Depends(deps.get_db),
+    document_ids: List[int]
+):
+    """
+    批量获取文档的处理状态
+    """
+    try:
+        documents_status = []
+        for doc_id in document_ids:
+            document = crud_sqlite.get_source_document(db=db, document_id=doc_id)
+            if document:
+                documents_status.append({
+                    "id": document.id,
+                    "filename": document.filename,
+                    "status": document.status,
+                    "resource_type": document.resource_type
+                })
+        return documents_status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取文档状态失败: {e}")
+
+
 @router.get("/{document_id}/subgraph", response_model=graph_schemas.Subgraph)
 def get_document_subgraph(
     *,
@@ -142,14 +167,14 @@ def get_document_subgraph(
         document = crud_sqlite.get_source_document(db=db, document_id=document_id)
         if not document:
             raise HTTPException(status_code=404, detail="文档不存在")
-        
+
         # 获取文档的子图谱数据
         subgraph_data = crud_graph.get_document_subgraph(driver=driver, document_id=document_id)
-        
+
         # 转换为Pydantic模型
         entities = [graph_schemas.Entity(**entity) for entity in subgraph_data["entities"]]
         relationships = [graph_schemas.Relationship(**rel) for rel in subgraph_data["relationships"]]
-        
+
         return graph_schemas.Subgraph(
             entities=entities,
             relationships=relationships

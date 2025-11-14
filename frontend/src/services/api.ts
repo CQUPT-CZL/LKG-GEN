@@ -312,16 +312,24 @@ export interface EmbeddingTopPairsResponseDTO {
 // API方法
 export const apiService = {
   // 文档管理
-  getDocuments: (skip = 0, limit = 100): Promise<SourceResource[]> => 
+  getDocuments: (skip = 0, limit = 100): Promise<SourceResource[]> =>
     api.get(`/documents/?skip=${skip}&limit=${limit}`),
-  getDocument: (documentId: number): Promise<SourceResource> => 
+  getDocument: (documentId: number): Promise<SourceResource> =>
     api.get(`/documents/${documentId}`),
-  deleteDocument: (documentId: number): Promise<{ message: string; details: any }> => 
+  deleteDocument: (documentId: number): Promise<{ message: string; details: any }> =>
     api.delete(`/documents/${documentId}`),
-  createResources: (data: BatchResourceRequest): Promise<BatchResourceResponse> => 
+  createResources: (data: BatchResourceRequest): Promise<BatchResourceResponse> =>
     api.post('/documents/resources', data),
-  getDocumentSubgraph: (documentId: number): Promise<Subgraph> => 
+  getDocumentSubgraph: (documentId: number): Promise<Subgraph> =>
     api.get(`/documents/${documentId}/subgraph`),
+  // 批量查询文档状态
+  getBatchDocumentsStatus: (documentIds: number[]): Promise<Array<{
+    id: number;
+    filename: string;
+    status: string;
+    resource_type: string;
+  }>> =>
+    api.post('/documents/batch-status', documentIds),
 
   // 知识图谱管理
   getGraphs: (skip = 0, limit = 100): Promise<Graph[]> => 
