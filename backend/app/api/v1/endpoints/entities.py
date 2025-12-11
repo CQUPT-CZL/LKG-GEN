@@ -11,13 +11,9 @@ from pydantic import BaseModel
 from app.crud import crud_entity, crud_graph
 from app.core.logging_config import get_logger
 import asyncio
+from openai import AsyncOpenAI
 
 logger = get_logger(__name__)
-
-try:
-    from fastmcp import Client as MCPClient
-except Exception:
-    MCPClient = None  # 允许后续进行可用性检查
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
     if not a or not b:
@@ -326,7 +322,7 @@ class EmbeddingTopPairsRequest(BaseModel):
     graph_id: str
     top_k: int = 3
     max_entities: int = 200
-    mcp_server_url: Optional[str] = "http://113.249.91.14:8008/mcp"
+    openai_base_url: Optional[str] = "http://113.249.91.14:8008/v1"
 
 class BasicEntityInfo(BaseModel):
     id: str
@@ -354,12 +350,9 @@ async def detect_topk_pairs_by_embedding(
     req: EmbeddingTopPairsRequest
 ):
     """
-    使用远程 MCP 嵌入服务，计算同类型实体之间的余弦相似度，并返回全局 Top-K 相似对。
+    使用远程 OpenAI 兼容的嵌入服务，计算同类型实体之间的余弦相似度，并返回全局 Top-K 相似对。
     """
-    # 检查 fastmcp 可用性
-    if MCPClient is None:
-        raise HTTPException(status_code=500, detail="后端未安装 fastmcp，无法调用嵌入服务")
-
+    
     # 加载实体列表（限制数量以避免过高计算负载）
     try:
         entities = crud_entity.get_entities_by_graph(driver=driver, graph_id=req.graph_id, skip=0, limit=req.max_entities)
@@ -383,36 +376,27 @@ async def detect_topk_pairs_by_embedding(
 
     # 异步批量获取嵌入
     async def get_embeddings(texts: List[str]) -> List[List[float]]:
-        async with MCPClient(req.mcp_server_url) as client:
-            tasks = [client.call_tool("get_query_embedding", {"text": t}) for t in texts]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            vecs: List[List[float]] = []
-            for res in results:
-                # 容错处理
-                if hasattr(res, "content"):
-                    contents = res.content
-                else:
-                    contents = res
-                if not isinstance(contents, (list, tuple)):
-                    contents = [contents]
-                # 寻找文本项并尝试解析为 JSON 列表或直接浮点列表
-                parsed: List[float] = []
-                for c in contents:
-                    try:
-                        if hasattr(c, "type") and c.type == "text" and hasattr(c, "text"):
-                            import json
-                            data = json.loads(c.text)
-                            if isinstance(data, list):
-                                parsed = [float(x) for x in data]
-                                break
-                        elif isinstance(c, list):
-                            parsed = [float(x) for x in c]
-                            break
-                    except Exception:
-                        parsed = []
-                vecs.append(parsed)
-            return vecs
+        if not texts:
+            return []
+            
+        client = AsyncOpenAI(
+            base_url=req.openai_base_url,
+            api_key="NOT_NEED"
+        )
+        
+        try:
+            # 使用 OpenAI 兼容接口批量获取 embeddings
+            response = await client.embeddings.create(
+                model="Embed",
+                input=texts
+            )
+            
+            # 提取向量列表，顺序与 input 一致
+            return [data.embedding for data in response.data]
+            
+        except Exception as e:
+            logger.error(f"Embedding 服务调用失败: {e}")
+            raise HTTPException(status_code=500, detail=f"Embedding 服务调用失败: {e}")
 
     # 为每个类型分别计算相似对
     suggestions: List[EmbeddingPairSuggestion] = []
