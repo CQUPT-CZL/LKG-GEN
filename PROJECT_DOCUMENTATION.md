@@ -266,3 +266,7 @@ A: 可以使用提供的脚本 `backend/scripts/clear_neo4j.py` 清空图数据�
 **Q: 支持哪些文档格式？**
 A: 目前主要支持 Markdown (.md) 格式的文档。对于其他格式（如 PDF, TXT），建议先转换为 Markdown 格式后再上传。
 
+
+**Q: 如何设计prompt模板？**
+
+
