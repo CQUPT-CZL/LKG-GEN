@@ -39,7 +39,7 @@ def chat_query(req: ChatRequest):
         if req.graph_id:
             payload["graph_id"] = req.graph_id
 
-        resp = httpx.post(settings.KG_QUERY_API_URL, json=payload, timeout=10)
+        resp = httpx.post(settings.KG_QUERY_API_URL, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
